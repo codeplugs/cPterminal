@@ -1,0 +1,22 @@
+// root build.gradle (Bersih, TANPA buildscript, TANPA repositories)
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Plugin Android diperlukan untuk 'com.android.library' dan 'com.android.application'
+        classpath 'com.android.tools.build:gradle:8.1.2' // versi terbaru bisa disesuaikan
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
