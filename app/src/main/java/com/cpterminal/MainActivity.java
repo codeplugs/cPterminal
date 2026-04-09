@@ -12,6 +12,8 @@ import android.view.inputmethod.InputMethodManager;
 import android.view.GestureDetector;
 import android.graphics.Rect;
 import android.view.ViewTreeObserver;
+import android.graphics.Color;
+import android.content.res.ColorStateList;
 
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalEmulator;
@@ -19,11 +21,161 @@ import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
 import com.termux.terminal.TerminalSession.SessionChangedCallback;
 
+import com.cpterminal.extrakeys.ExtraKeysView;
+import com.cpterminal.extrakeys.ExtraKeysInfo;
+import com.cpterminal.extrakeys.ExtraKeyButton;
+import com.cpterminal.extrakeys.ExtraKeysConstants;
+import com.google.android.material.button.MaterialButton;
+
 
 public class MainActivity extends AppCompatActivity {
  private boolean keyboardVisible = false; // tambahkan ini
+private boolean isCtrlActive = false;
+private boolean isAltActive = false;
+private ExtraKeysView extraKeysView;
+ private ExtraKeysInfo currentExtraKeysInfo; // Tambahkan ini
     private TerminalView terminalView;
     private TerminalSession terminalSession;
+	
+	
+	
+	private void sendControlKedy(TerminalSession session, String key) {
+    if ("MY_CONTROL_KEY".equals(key)) {
+        // Kirim CTRL+C → ASCII 3
+        session.write(new String(new char[]{3}));
+        isCtrlActive = false; // reset tombol
+        // Kembalikan UI tombol ke default
+      
+    }
+}
+	
+	private void sendControlKey(TerminalSession session, int codePoint) {
+    if (session == null) return;
+
+    int controlCode = -1;
+    
+    // Jika input adalah huruf a-z atau A-Z
+    if (codePoint >= 'a' && codePoint <= 'z') {
+        controlCode = codePoint - 'a' + 1;
+    } else if (codePoint >= 'A' && codePoint <= 'Z') {
+        controlCode = codePoint - 'A' + 1;
+    } 
+    // Handle karakter spesial tambahan seperti di kodemu
+    else if (codePoint == '@') {
+        session.write("\u0000");
+        return;
+    } else if (codePoint == '[') {
+        session.write("\u001b");
+        return;
+    } else if (codePoint == ' ') {
+        controlCode = 0; // Ctrl + Space
+    }
+
+    if (controlCode != -1) {
+        session.write(new String(new char[]{(char) controlCode}));
+    }
+
+    // Reset status CTRL setelah digunakan
+    isCtrlActive = false;
+    runOnUiThread(() -> extraKeysView.reload(currentExtraKeysInfo, 0));
+}
+	
+	
+	
+	
+	private void sendControlKeyS(TerminalSession session, String key) {
+    char c = key.toUpperCase().charAt(0);
+    // Logika: Huruf A=1, B=2, C=3 ... Z=26
+    int controlCode = c - 64; 
+    
+    if (controlCode >= 1 && controlCode <= 26) {
+        session.write(new String(new char[]{(char) controlCode}));
+    } else if (key.equals("@")) session.write("\u0000");
+    else if (key.equals("[")) session.write("\u001b");
+    // Tambahkan sesuai kebutuhan
+}
+	
+	
+	// PERBAIKAN: Fungsi pengirim tombol
+    private void sendKeyToTerminal(String key) {
+        // Ambil session saat ini dari terminalView
+        TerminalSession currentSession = terminalView.getCurrentSession();
+        if (currentSession == null) return;
+
+        switch (key) {
+			
+            case "ESC": currentSession.write("\u001b"); break;
+			case "BKSP": // Tambahkan case ini jika library mengirimkan singkatan
+            currentSession.write("\u007f"); // Kode ASCII untuk menghapus
+            break;
+            case "TAB": currentSession.write("\t"); break;
+            case "ENTER": currentSession.write("\r"); break;
+            case "UP": currentSession.write("\u001b[A"); break;
+            case "DOWN": currentSession.write("\u001b[B"); break;
+            case "RIGHT": currentSession.write("\u001b[C"); break;
+            case "LEFT": currentSession.write("\u001b[D"); break;
+            // KODE KRUSIAL UNTUK BACKSPACE
+            case "BACKSPACE": 
+           currentSession.write("\u007f"); 
+            break;
+			default:
+            if (key.length() == 1) {
+                // Jika tombol 'C' di Extra Keys diklik saat tombol CTRL software aktif
+                if (isCtrlActive) {
+                    char c = key.toUpperCase().charAt(0);
+                    currentSession.write(new String(new char[]{(char) (c - 64)}));
+                    isCtrlActive = false; // Reset
+                    extraKeysView.reload(currentExtraKeysInfo, 0);
+                } else {
+                    currentSession.write(key);
+                }
+            }
+            break;
+        }
+		 terminalView.updateSize();
+        terminalView.scrollToBottom();
+    }
+	
+	
+	/*private void sendKeyToTerminal(String key) {
+    TerminalSession currentSession = terminalView.getCurrentSession();
+    if (currentSession == null) return;
+
+    // Jika yang ditekan adalah karakter tunggal (a-z)
+    if (key.length() == 1) {
+        char c = key.charAt(0);
+        if (isCtrlActive) {
+            // Logika Manual: Konversi huruf ke Control Code ASCII
+            // A atau a -> 1, B atau b -> 2, dst.
+            if (c >= 'a' && c <= 'z') {
+                c = (char) (c - 'a' + 1);
+            } else if (c >= 'A' && c <= 'Z') {
+                c = (char) (c - 'A' + 1);
+            }
+            
+            currentSession.write(Character.toString(c));
+            
+            // Reset status setelah dikirim
+            isCtrlActive = false;
+            runOnUiThread(() -> extraKeysView.reload(currentExtraKeysInfo, 0));
+        } else {
+            currentSession.write(key);
+        }
+    } else {
+        // Handle tombol khusus lainnya
+        switch (key) {
+            case "ESC": currentSession.write("\u001b"); break;
+            case "TAB": currentSession.write("\t"); break;
+            case "ENTER": currentSession.write("\r"); break;
+            case "BACKSPACE": currentSession.write("\u007f"); break;
+            case "UP": currentSession.write("\u001b[A"); break;
+            case "DOWN": currentSession.write("\u001b[B"); break;
+            case "LEFT": currentSession.write("\u001b[D"); break;
+            case "RIGHT": currentSession.write("\u001b[C"); break;
+        }
+    }
+}*/
+
 	
 	private void scrollToBottom() {
     if (terminalView != null) {
@@ -43,13 +195,153 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-       
+       //ExtraKeysView extraKeysView = findViewById(R.id.extra_keys);
+	   
+	  
+
+	   
         // TerminalView
         terminalView = findViewById(R.id.terminal_view);
 terminalView.setTextSize(30);
 terminalView.setFocusable(true);
         terminalView.setFocusableInTouchMode(true);
         terminalView.requestFocus();
+
+
+
+
+
+// Extra Keys
+        //ExtraKeysView extraKeysView = findViewById(R.id.extra_keys);
+        extraKeysView = findViewById(R.id.extra_keys);
+		
+		final View rootViews = findViewById(R.id.rootLayout);
+		
+		rootViews.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+    private int previousHeight = 0;
+
+    @Override
+    public void onGlobalLayout() {
+        Rect r = new Rect();
+        rootViews.getWindowVisibleDisplayFrame(r);
+
+        int screenHeight = rootViews.getRootView().getHeight();
+        int keypadHeight = screenHeight - r.bottom;
+
+        // Cek jika ada perubahan tinggi (keyboard muncul/sembunyi)
+        if (previousHeight != keypadHeight) {
+            previousHeight = keypadHeight;
+
+            if (keypadHeight > screenHeight * 0.15) { 
+                // --- KEYBOARD MUNCUL ---
+                if (extraKeysView.getVisibility() == View.GONE) {
+                    extraKeysView.setVisibility(View.VISIBLE); // Tampilkan ExtraKeys
+                }
+                
+                // Pastikan terminal tetap scroll ke bawah agar teks tidak tertutup
+                terminalView.postDelayed(() -> scrollToBottom(), 100);
+            } else {
+                // --- KEYBOARD SEMBUNYI ---
+                if (extraKeysView.getVisibility() == View.VISIBLE) {
+                    extraKeysView.setVisibility(View.GONE); // Sembunyikan ExtraKeys
+                }
+                
+                // Update ukuran terminal ke layar penuh
+                terminalView.post(() -> terminalView.updateSize());
+            }
+        }
+    }
+});
+		
+		String buttonsJson = "[" +
+    "[" +
+    "  'ESC', " +
+    "  {key: 'MY_CONTROL_KEY', display: 'CTRL'}, " + // Paksa sebagai objek
+    "  {key: 'MY_ALT_KEY', display: 'ALT'}, " +  // Paksa sebagai objek
+    "  {key: 'TAB', display: 'TAB'}, " +
+    "  'UP'" +
+    "]," +
+    "['LEFT', 'DOWN', 'RIGHT', 'ENTER', 'BACKSPACE']" +
+    "]";
+	
+		String buttonsson = "[" +
+    "['ESC', 'CTRL', 'ALT', {key: 'TAB', display: 'TAB'}, 'UP']," +
+    "['LEFT', 'DOWN', 'RIGHT', 'ENTER', 'BACKSPACE']" +
+    "]";
+	
+		String buttonsJsoG = "[" +
+    "['ESC', 'CTRL', 'ALT', '⇥', 'UP']," +
+    "['LEFT', 'DOWN', 'RIGHT', 'ENTER', 'BACKSPACE']" +
+    "]";
+
+try {
+    // 2. Gunakan 3 parameter sesuai constructor di file ExtraKeysInfo.java kamu:
+    // Parameter 1: String JSON
+    // Parameter 2: Nama style (misal "default")
+    // Parameter 3: Alias map (kita kirim default aliases dari Constants)
+    
+    currentExtraKeysInfo = new ExtraKeysInfo(
+        buttonsJson, 
+        "default", 
+        ExtraKeysConstants.CONTROL_CHARS_ALIASES
+    );
+
+    extraKeysView.reload(currentExtraKeysInfo, 0);
+// PAKSA MUNCUL:
+//extraKeysView.setVisibility(View.VISIBLE);
+//extraKeysView.setAlpha(1.0f); // Pastikan tidak transparan
+//extraKeysView.bringToFront(); // Paksa ke lapisan paling atas
+//extraKeysView.setBackgroundColor(android.graphics.Color.DKGRAY); // Beri wa
+
+
+} catch (org.json.JSONException e) {
+    e.printStackTrace();
+}
+
+        extraKeysView.setExtraKeysViewClient(new ExtraKeysView.IExtraKeysView() {
+            @Override
+            public void onExtraKeyButtonClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+				String key = buttonInfo.getKey();
+  TerminalSession session = terminalView.getCurrentSession();
+
+        if (session != null) {
+			
+    if ("MY_CONTROL_KEY".equals(key)) {
+        isCtrlActive = !isCtrlActive; // Toggle status
+		
+		if (isCtrlActive) {
+			
+                    //char c = key.toLowerCase().charAt(0);
+                   //session.write(new String(new char[]{3})); // CTRL + huruf
+			
+            // Warna saat aktif (misal: Biru)
+            button.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#2196F3")));
+            button.setTextColor(Color.BLUE);
+			//sendControlKey(session, key);
+			
+        } else {
+            // Warna saat mati (kembalikan ke transparan atau abu-abu)
+            button.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
+            button.setTextColor(Color.WHITE); // Atau warna defaultmu
+        }
+    } else if ("MY_ALT_KEY".equals(key)) {
+        //isAltActive = !isAltActive;
+        //button.setSelected(isAltActive);
+    } else {
+        sendKeyToTerminal(key);
+    }
+    }
+            }
+
+            @Override
+            public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+                return true;
+            }
+        });
+
+
+
+
 
 terminalView.setOnTouchListener(new View.OnTouchListener() {
     private GestureDetector gestureDetector = new GestureDetector(MainActivity.this,
@@ -76,6 +368,12 @@ terminalView.setOnTouchListener(new View.OnTouchListener() {
         return false; // biar TerminalView tetap menangani touch
     }
 });
+
+
+
+ 
+	
+
 
 
 
@@ -238,7 +536,35 @@ public boolean shouldBackButtonBeMappedToEscape() {
     // ❗ WAJIB ADA (error kamu minta ini)
     @Override
     public boolean onCodePoint(int codePoint, boolean ctrlDown, TerminalSession session) {
-       session.writeCodePoint(ctrlDown, codePoint);
+       //session.writeCodePoint(ctrlDown, codePoint);
+	   if (session == null) return false;
+	   
+	  // Gabungkan CTRL hardware dan CTRL software kita
+    boolean finalCtrl = ctrlDown || isCtrlActive;
+    boolean finalAlt = isAltActive; // Jika terminal mendukung Alt software
+
+
+    if (isCtrlActive) {
+		//session.write(new String(new char[]{3}));
+        sendControlKey(session, codePoint); // Panggil fungsi master
+        //return true; 
+    }else{
+		session.writeCodePoint(ctrlDown, codePoint);
+	}
+
+    // Kirim kombinasi ke session
+    //session.writeCodePoint(finalCtrl, codePoint);
+
+    // RESET status setelah ditekan (Perilaku standar Termux)
+    /*if (isCtrlActive || isAltActive) {
+        isCtrlActive = false;
+        isAltActive = false;
+        
+        // Update UI tombol agar tidak berwarna biru lagi
+        extraKeysView.reload(currentExtraKeysInfo, 0); 
+    }*/
+	   
+	   
 	   // SETIAP KALI MENGETIK:
         // Gunakan post agar dijalankan setelah layouting selesai
         terminalView.post(() -> {
@@ -250,7 +576,6 @@ public boolean shouldBackButtonBeMappedToEscape() {
 };
 
 terminalView.setOnKeyListener(client);
-
 TerminalSession.SessionChangedCallback callback =
         new TerminalSession.SessionChangedCallback() {
 @Override
