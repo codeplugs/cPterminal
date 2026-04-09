@@ -384,7 +384,20 @@ public final class TerminalView extends View {
     protected int computeVerticalScrollOffset() {
         return mEmulator == null ? 1 : mEmulator.getScreen().getActiveRows() + mTopRow - mEmulator.mRows;
     }
+	
+	public void setTopRow(int topRow) {
+    this.mTopRow = topRow;
+}
 
+    public int getTopRow() {
+    return mTopRow;
+    }
+// Tambahkan ini agar MainActivity bisa memaksa scroll ke posisi paling bawah
+public void scrollToBottom() {
+    this.mTopRow = 0; // 0 berarti baris aktif paling bawah
+    invalidate();     // Refresh tampilan
+    awakenScrollBars(); 
+}
     public void onScreenUpdated() {
         if (mEmulator == null) return;
 

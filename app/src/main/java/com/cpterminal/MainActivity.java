@@ -24,6 +24,19 @@ public class MainActivity extends AppCompatActivity {
  private boolean keyboardVisible = false; // tambahkan ini
     private TerminalView terminalView;
     private TerminalSession terminalSession;
+	
+	private void scrollToBottom() {
+    if (terminalView != null) {
+        terminalView.post(() -> {
+            // Memanggil method yang sudah kita buat public di TerminalView
+            terminalView.updateSize(); 
+            terminalView.setTopRow(0);
+            terminalView.onScreenUpdated();
+            terminalView.invalidate();
+        });
+    }
+}
+	
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +93,52 @@ final View rootView = findViewById(R.id.rootLayout);
 });*/
 
 
+rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+    private int previousHeight = 0;
+
+    @Override
+    public void onGlobalLayout() {
+        Rect r = new Rect();
+        rootView.getWindowVisibleDisplayFrame(r);
+
+        int screenHeight = rootView.getRootView().getHeight();
+        int keypadHeight = screenHeight - r.bottom;
+
+        if (previousHeight != keypadHeight) {
+            previousHeight = keypadHeight;
+
+            if (keypadHeight > screenHeight * 0.15) { 
+                // KEYBOARD MUNCUL:
+                // Kita beri jeda sedikit agar layout Android selesai resize secara fisik
+                terminalView.postDelayed(() -> scrollToBottom(), 100);
+            }
+        }
+    }
+});
+
+
+
+rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+    private int previousHeight = 0;
+
+    @Override
+    public void onGlobalLayout() {
+        Rect r = new Rect();
+        rootView.getWindowVisibleDisplayFrame(r);
+
+        int screenHeight = rootView.getRootView().getHeight();
+        int keypadHeight = screenHeight - r.bottom;
+
+        if (previousHeight != keypadHeight) {
+            previousHeight = keypadHeight;
+
+            if (keypadHeight > screenHeight * 0.15) { 
+                // Keyboard muncul
+                terminalView.postDelayed(() -> scrollToBottom(), 100);
+            }
+        }
+    }
+});
 
 
 
@@ -87,6 +146,8 @@ final View rootView = findViewById(R.id.rootLayout);
    
 
 TerminalViewClient client = new TerminalViewClient() {
+	
+
 
     @Override
     public void onSingleTapUp(MotionEvent e) {
@@ -106,11 +167,55 @@ public void copyModeChanged(boolean copyMode) {
         return scale;
     }
 
-    @Override
+   /* @Override
     public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
-		session.writeCodePoint(e.isCtrlPressed(), e.getUnicodeChar());
+		//session.writeCodePoint(e.isCtrlPressed(), e.getUnicodeChar());
+		
+		terminalView.post(() -> {
+            terminalView.updateSize();
+            terminalView.scrollToBottom();
+        });
+		
+		int unicodeChar = e.getUnicodeChar();
+        if (unicodeChar != 0) {
+            session.writeCodePoint(e.isCtrlPressed(), unicodeChar);
+        }
+		
         return true;
+    }*/
+	
+	
+	@Override
+public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
+    // 1. Jalankan fungsi scroll otomatis agar saat menghapus pun layar tetap di bawah
+    terminalView.post(() -> {
+        terminalView.updateSize();
+        terminalView.scrollToBottom();
+    });
+
+    // 2. Kirim tombol khusus (seperti Backspace, Enter, Tab) ke session
+    // Method ini adalah cara standar Termux mengirim input hardware ke emulator
+    /*if (session != null && session.isRunning()) {
+        // Jika terminalView punya method handleKeyDown, panggil itu
+        // Jika tidak, biarkan sistem menangani lewat return false
+    }*/
+
+// 2. Logika khusus untuk tombol ENTER saat proses selesai
+    if (keyCode == KeyEvent.KEYCODE_ENTER) {
+        // Jika session sudah tidak jalan (tampil pesan Process completed)
+        if (session != null && !session.isRunning()) {
+            // Skenario A: Finish activity jika session selesai
+            finish(); 
+            // Skenario B: Atau jika mau restart session, panggil method restart kamu di sini
+            return true;
+        }
     }
+
+
+    // 3. PENTING: Kembalikan 'false' agar TerminalView internal 
+    // tetap menerima event ini dan memproses Backspace/Enter secara normal.
+    return false; 
+}
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent e) {
@@ -134,6 +239,12 @@ public boolean shouldBackButtonBeMappedToEscape() {
     @Override
     public boolean onCodePoint(int codePoint, boolean ctrlDown, TerminalSession session) {
        session.writeCodePoint(ctrlDown, codePoint);
+	   // SETIAP KALI MENGETIK:
+        // Gunakan post agar dijalankan setelah layouting selesai
+        terminalView.post(() -> {
+            terminalView.updateSize();    // Hitung ulang baris yang muat di atas keyboard
+            terminalView.scrollToBottom(); // Paksa scroll ke bawah (mTopRow = 0)
+        });
         return true;
     }
 };
