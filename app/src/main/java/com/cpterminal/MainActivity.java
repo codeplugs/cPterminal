@@ -465,6 +465,7 @@ public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
         // Jika session sudah tidak jalan (tampil pesan Process completed)
         if (session != null && !session.isRunning()) {
             // Skenario A: Finish activity jika session selesai
+			stopService(new Intent(MainActivity.this, TerminalService.class));
             finish(); 
             // Skenario B: Atau jika mau restart session, panggil method restart kamu di sini
             return true;
