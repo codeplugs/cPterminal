@@ -14,6 +14,17 @@ import android.graphics.Rect;
 import android.view.ViewTreeObserver;
 import android.graphics.Color;
 import android.content.res.ColorStateList;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.app.AlertDialog;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalEmulator;
@@ -39,14 +50,61 @@ private ExtraKeysView extraKeysView;
 	
 	
 	
-	private void sendControlKedy(TerminalSession session, String key) {
-    if ("MY_CONTROL_KEY".equals(key)) {
-        // Kirim CTRL+C → ASCII 3
-        session.write(new String(new char[]{3}));
-        isCtrlActive = false; // reset tombol
-        // Kembalikan UI tombol ke default
-      
+	private void showRadioDialog() {
+  String[] options = {"Option 1", "Option 2", "Option 3"};
+final int[] selectedIndex = {0};
+
+// 🔥 Custom adapter untuk radio text
+ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+        this,
+        android.R.layout.simple_list_item_single_choice,
+        options
+) {
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent) {
+        View view = super.getView(position, convertView, parent);
+
+        TextView text = view.findViewById(android.R.id.text1);
+        text.setTextColor(Color.WHITE); // 🔥 RADIO TEXT PUTIH
+        text.setTypeface(Typeface.MONOSPACE); // opsional biar terminal vibe
+
+        view.setBackgroundColor(Color.parseColor("#3605B0")); // background item
+
+        return view;
     }
+};
+
+// 🔥 Custom TITLE
+TextView title = new TextView(this);
+title.setText("Pilih Mode");
+title.setTextColor(Color.WHITE); // 🔥 TITLE PUTIH
+title.setTextSize(20);
+//title.setPadding(40, 40, 40, 20);
+
+AlertDialog dialog = new AlertDialog.Builder(this)
+        .setCustomTitle(title) // 🔥 pakai custom title
+        .setSingleChoiceItems(adapter, selectedIndex[0], (d, which) -> {
+            selectedIndex[0] = which;
+        })
+        .setPositiveButton("OK", (d, which) -> {
+            String selected = options[selectedIndex[0]];
+            Toast.makeText(this, "Dipilih: " + selected, Toast.LENGTH_SHORT).show();
+        })
+        .setNegativeButton("Cancel", null)
+        .create();
+
+dialog.show();
+
+// 🔥 Background dialog
+if (dialog.getWindow() != null) {
+    dialog.getWindow().setBackgroundDrawable(
+        new ColorDrawable(Color.parseColor("#3605B0"))
+    );
+}
+
+// 🔥 Tombol jadi putih
+dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 }
 	
 	private void sendControlKey(TerminalSession session, int codePoint) {
@@ -631,8 +689,23 @@ TerminalSession session = new TerminalSession(
 		
 		 
     }
+@Override
+public boolean onCreateOptionsMenu(Menu menu) {
+    getMenuInflater().inflate(R.menu.main_menu, menu);
+    return true;
+}
+		@Override
+public boolean onOptionsItemSelected(MenuItem item) {
+    if (item.getItemId() == R.id.action_switch) {
 
-		
+       showRadioDialog();
+       
+
+        return true;
+    }
+    return super.onOptionsItemSelected(item);
+}
+
     @Override
     protected void onDestroy() {
         super.onDestroy();

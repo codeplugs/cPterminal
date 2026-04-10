@@ -1,4 +1,4 @@
-package com.ort.edu.helloworld;
+package com.cpterminal;
 
 import org.junit.Test;
 
