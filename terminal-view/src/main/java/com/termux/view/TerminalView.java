@@ -1228,7 +1228,18 @@ public void scrollToBottom() {
                     switch (item.getItemId()) {
                         case 1:
                             String selectedText = mEmulator.getSelectedText(mSelX1, mSelY1, mSelX2, mSelY2).trim();
+                            if (selectedText != null) {
+                            selectedText = selectedText.trim();
+        
+                           // --- PERBAIKAN DI SINI: Paksa simpan ke Clipboard Android ---
+                           ClipboardManager cb = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                           ClipData clip = ClipData.newPlainText("terminal_copy", selectedText);
+                           cb.setPrimaryClip(clip);
+                            // -------------------------------------------------------------
+
+                            // Tetap panggil ini sebagai backup
                             mTermSession.clipboardText(selectedText);
+    }
                             break;
                         case 2:
                             ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);

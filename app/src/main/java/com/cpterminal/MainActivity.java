@@ -248,7 +248,7 @@ try {
 //extraKeysView.setVisibility(View.VISIBLE);
 //extraKeysView.setAlpha(1.0f); // Pastikan tidak transparan
 //extraKeysView.bringToFront(); // Paksa ke lapisan paling atas
-//extraKeysView.setBackgroundColor(android.graphics.Color.DKGRAY); // Beri wa
+extraKeysView.setBackgroundColor(android.graphics.Color.BLACK); // Beri wa
 
 
 } catch (org.json.JSONException e) {
