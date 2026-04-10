@@ -25,6 +25,15 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.IBinder;
+
+
 
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalEmulator;
@@ -47,8 +56,86 @@ private ExtraKeysView extraKeysView;
  private ExtraKeysInfo currentExtraKeysInfo; // Tambahkan ini
     private TerminalView terminalView;
     private TerminalSession terminalSession;
+	private TerminalService mTerminalService;
+	private SessionChangedCallback callback;
+	private final ServiceConnection mServiceConnection = new ServiceConnection() {
+    @Override
+public void onServiceConnected(ComponentName name, IBinder service) {
+    TerminalService.TerminalServiceBinder binder = (TerminalService.TerminalServiceBinder) service;
+    mTerminalService = binder.getService();
+    
+    // 🔥 LOGIKA CEK SESSION:
+    TerminalSession existingSession = mTerminalService.getLastSession();
+    
+    if (existingSession != null) {
+        // Jika sudah ada session di background, pakai yang itu
+        terminalSession = existingSession;
+    } else {
+        // Jika benar-benar kosong (baru pertama buka), baru buat baru
+        terminalSession = createNewSession(); 
+        mTerminalService.registerSession(terminalSession);
+    }
+    
+    // Pasang ke view
+    terminalView.attachSession(terminalSession);
+}
+
+    @Override
+    public void onServiceDisconnected(ComponentName name) {
+        mTerminalService = null;
+    }
+};
+
+@Override
+protected void onStop() {
+    super.onStop();
+    // Lepaskan koneksi service saat activity tidak terlihat
+    if (mTerminalService != null) {
+        unbindService(mServiceConnection);
+        mTerminalService = null;
+    }
+}
+
+
+@Override
+protected void onStart() {
+    super.onStart();
+    Intent intent = new Intent(this, TerminalService.class);
+    // Jalankan agar tetap hidup meski MainActivity hancur
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        startForegroundService(intent);
+    } else {
+        startService(intent);
+    }
+    // Bind untuk interaksi antar code
+    bindService(intent, mServiceConnection, Context.BIND_AUTO_CREATE);
+}
 	
+	@Override
+protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    
+    // Saat notifikasi diklik dan app sudah terbuka, 
+    // pastikan kita tetap fokus ke terminal yang sama
+    if (terminalView != null && terminalSession != null) {
+        terminalView.attachSession(terminalSession);
+    }
+}
 	
+	// Buat helper method agar kode onCreate lebih bersih
+private TerminalSession createNewSession() {
+    String prefix = getFilesDir().getAbsolutePath();
+    String shellPath = prefix + "/bin/bash";
+    
+    return new TerminalSession(
+         "/system/bin/sh",   // command
+        prefix,               // args
+         new String[0],               // env
+         new String[0],               // cwd
+        callback   
+    );
+}
 	
 	private void showRadioDialog() {
   String[] options = {"Option 1", "Option 2", "Option 3"};
@@ -441,7 +528,8 @@ public boolean shouldBackButtonBeMappedToEscape() {
 };
 
 terminalView.setOnKeyListener(client);
-TerminalSession.SessionChangedCallback callback =
+
+   callback =
         new TerminalSession.SessionChangedCallback() {
 @Override
 public void onColorsChanged(TerminalSession session) {
@@ -481,7 +569,7 @@ TerminalSession session = new TerminalSession(
 
 
         // Buat TerminalSession
-        terminalSession = new TerminalSession(shellPath, prefix, new String[0], new String[0],
+        /*terminalSession = new TerminalSession(shellPath, prefix, new String[0], new String[0],
                 new TerminalSession.SessionChangedCallback() {
                     @Override public void onTextChanged(TerminalSession changedSession) {}
                     @Override public void onTitleChanged(TerminalSession changedSession) {}
@@ -489,10 +577,10 @@ TerminalSession session = new TerminalSession(
                     @Override public void onClipboardText(TerminalSession session, String text) {}
                     @Override public void onBell(TerminalSession session) {}
                     @Override public void onColorsChanged(TerminalSession session) {}
-                });
+                });*/
 
         // ✅ Attach session setelah view siap
-        terminalView.post(() -> terminalView.attachSession(session));
+        //terminalView.post(() -> terminalView.attachSession(session));
 		
 		 
     }
@@ -513,12 +601,15 @@ public boolean onOptionsItemSelected(MenuItem item) {
     return super.onOptionsItemSelected(item);
 }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (terminalSession != null) {
-            terminalSession.finishIfRunning();
-            terminalSession = null;
-        }
+  @Override
+protected void onDestroy() {
+    super.onDestroy();
+    // 🔥 PERBAIKAN: Jangan panggil terminalSession.finishIfRunning() di sini!
+    // Jika dipanggil di sini, setiap kali kamu keluar app, terminal MATI.
+    
+    if (mTerminalService != null) {
+        unbindService(mServiceConnection);
+        mTerminalService = null;
     }
+}
 }
