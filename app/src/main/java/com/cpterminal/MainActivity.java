@@ -79,7 +79,7 @@ TextView title = new TextView(this);
 title.setText("Pilih Mode");
 title.setTextColor(Color.WHITE); // 🔥 TITLE PUTIH
 title.setTextSize(20);
-//title.setPadding(40, 40, 40, 20);
+title.setPadding(40, 40, 40, 20);
 
 AlertDialog dialog = new AlertDialog.Builder(this)
         .setCustomTitle(title) // 🔥 pakai custom title
@@ -141,18 +141,6 @@ dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 	
 	
 	
-	private void sendControlKeyS(TerminalSession session, String key) {
-    char c = key.toUpperCase().charAt(0);
-    // Logika: Huruf A=1, B=2, C=3 ... Z=26
-    int controlCode = c - 64; 
-    
-    if (controlCode >= 1 && controlCode <= 26) {
-        session.write(new String(new char[]{(char) controlCode}));
-    } else if (key.equals("@")) session.write("\u0000");
-    else if (key.equals("[")) session.write("\u001b");
-    // Tambahkan sesuai kebutuhan
-}
-	
 	
 	// PERBAIKAN: Fungsi pengirim tombol
     private void sendKeyToTerminal(String key) {
@@ -195,44 +183,7 @@ dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
     }
 	
 	
-	/*private void sendKeyToTerminal(String key) {
-    TerminalSession currentSession = terminalView.getCurrentSession();
-    if (currentSession == null) return;
-
-    // Jika yang ditekan adalah karakter tunggal (a-z)
-    if (key.length() == 1) {
-        char c = key.charAt(0);
-        if (isCtrlActive) {
-            // Logika Manual: Konversi huruf ke Control Code ASCII
-            // A atau a -> 1, B atau b -> 2, dst.
-            if (c >= 'a' && c <= 'z') {
-                c = (char) (c - 'a' + 1);
-            } else if (c >= 'A' && c <= 'Z') {
-                c = (char) (c - 'A' + 1);
-            }
-            
-            currentSession.write(Character.toString(c));
-            
-            // Reset status setelah dikirim
-            isCtrlActive = false;
-            runOnUiThread(() -> extraKeysView.reload(currentExtraKeysInfo, 0));
-        } else {
-            currentSession.write(key);
-        }
-    } else {
-        // Handle tombol khusus lainnya
-        switch (key) {
-            case "ESC": currentSession.write("\u001b"); break;
-            case "TAB": currentSession.write("\t"); break;
-            case "ENTER": currentSession.write("\r"); break;
-            case "BACKSPACE": currentSession.write("\u007f"); break;
-            case "UP": currentSession.write("\u001b[A"); break;
-            case "DOWN": currentSession.write("\u001b[B"); break;
-            case "LEFT": currentSession.write("\u001b[D"); break;
-            case "RIGHT": currentSession.write("\u001b[C"); break;
-        }
-    }
-}*/
+	
 
 	
 	private void scrollToBottom() {
@@ -253,9 +204,7 @@ dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-       //ExtraKeysView extraKeysView = findViewById(R.id.extra_keys);
-	   
-	  
+     
 
 	   
         // TerminalView
@@ -266,50 +215,9 @@ terminalView.setFocusable(true);
         terminalView.requestFocus();
 
 
-
-
-
-// Extra Keys
-        //ExtraKeysView extraKeysView = findViewById(R.id.extra_keys);
-        extraKeysView = findViewById(R.id.extra_keys);
+   extraKeysView = findViewById(R.id.extra_keys);
 		
-		final View rootViews = findViewById(R.id.rootLayout);
-		
-		rootViews.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
-    private int previousHeight = 0;
 
-    @Override
-    public void onGlobalLayout() {
-        Rect r = new Rect();
-        rootViews.getWindowVisibleDisplayFrame(r);
-
-        int screenHeight = rootViews.getRootView().getHeight();
-        int keypadHeight = screenHeight - r.bottom;
-
-        // Cek jika ada perubahan tinggi (keyboard muncul/sembunyi)
-        if (previousHeight != keypadHeight) {
-            previousHeight = keypadHeight;
-
-            if (keypadHeight > screenHeight * 0.15) { 
-                // --- KEYBOARD MUNCUL ---
-                if (extraKeysView.getVisibility() == View.GONE) {
-                    extraKeysView.setVisibility(View.VISIBLE); // Tampilkan ExtraKeys
-                }
-                
-                // Pastikan terminal tetap scroll ke bawah agar teks tidak tertutup
-                terminalView.postDelayed(() -> scrollToBottom(), 100);
-            } else {
-                // --- KEYBOARD SEMBUNYI ---
-                if (extraKeysView.getVisibility() == View.VISIBLE) {
-                    extraKeysView.setVisibility(View.GONE); // Sembunyikan ExtraKeys
-                }
-                
-                // Update ukuran terminal ke layar penuh
-                terminalView.post(() -> terminalView.updateSize());
-            }
-        }
-    }
-});
 		
 		String buttonsJson = "[" +
     "[" +
@@ -319,19 +227,10 @@ terminalView.setFocusable(true);
     "  {key: 'TAB', display: 'TAB'}, " +
     "  'UP'" +
     "]," +
-    "['LEFT', 'DOWN', 'RIGHT', 'ENTER', 'BACKSPACE']" +
+    "['LEFT', 'DOWN', 'RIGHT', 'BACKSPACE']" +
     "]";
 	
-		String buttonsson = "[" +
-    "['ESC', 'CTRL', 'ALT', {key: 'TAB', display: 'TAB'}, 'UP']," +
-    "['LEFT', 'DOWN', 'RIGHT', 'ENTER', 'BACKSPACE']" +
-    "]";
 	
-		String buttonsJsoG = "[" +
-    "['ESC', 'CTRL', 'ALT', '⇥', 'UP']," +
-    "['LEFT', 'DOWN', 'RIGHT', 'ENTER', 'BACKSPACE']" +
-    "]";
-
 try {
     // 2. Gunakan 3 parameter sesuai constructor di file ExtraKeysInfo.java kamu:
     // Parameter 1: String JSON
@@ -432,73 +331,6 @@ terminalView.setOnTouchListener(new View.OnTouchListener() {
  
 	
 
-
-
-
-// root layout dari activity
-final View rootView = findViewById(R.id.rootLayout);
-
-/*rootView.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-    Rect r = new Rect();
-    rootView.getWindowVisibleDisplayFrame(r);
-    int screenHeight = rootView.getRootView().getHeight();
-    int keypadHeight = screenHeight - r.bottom;
-
-    // keypadHeight > 0 berarti keyboard muncul
-    keyboardVisible = keypadHeight > 0;
-});*/
-
-
-rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
-    private int previousHeight = 0;
-
-    @Override
-    public void onGlobalLayout() {
-        Rect r = new Rect();
-        rootView.getWindowVisibleDisplayFrame(r);
-
-        int screenHeight = rootView.getRootView().getHeight();
-        int keypadHeight = screenHeight - r.bottom;
-
-        if (previousHeight != keypadHeight) {
-            previousHeight = keypadHeight;
-
-            if (keypadHeight > screenHeight * 0.15) { 
-                // KEYBOARD MUNCUL:
-                // Kita beri jeda sedikit agar layout Android selesai resize secara fisik
-                terminalView.postDelayed(() -> scrollToBottom(), 100);
-            }
-        }
-    }
-});
-
-
-
-rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
-    private int previousHeight = 0;
-
-    @Override
-    public void onGlobalLayout() {
-        Rect r = new Rect();
-        rootView.getWindowVisibleDisplayFrame(r);
-
-        int screenHeight = rootView.getRootView().getHeight();
-        int keypadHeight = screenHeight - r.bottom;
-
-        if (previousHeight != keypadHeight) {
-            previousHeight = keypadHeight;
-
-            if (keypadHeight > screenHeight * 0.15) { 
-                // Keyboard muncul
-                terminalView.postDelayed(() -> scrollToBottom(), 100);
-            }
-        }
-    }
-});
-
-
-
-
    
 
 TerminalViewClient client = new TerminalViewClient() {
@@ -523,22 +355,7 @@ public void copyModeChanged(boolean copyMode) {
         return scale;
     }
 
-   /* @Override
-    public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
-		//session.writeCodePoint(e.isCtrlPressed(), e.getUnicodeChar());
-		
-		terminalView.post(() -> {
-            terminalView.updateSize();
-            terminalView.scrollToBottom();
-        });
-		
-		int unicodeChar = e.getUnicodeChar();
-        if (unicodeChar != 0) {
-            session.writeCodePoint(e.isCtrlPressed(), unicodeChar);
-        }
-		
-        return true;
-    }*/
+  
 	
 	
 	@Override
@@ -610,17 +427,7 @@ public boolean shouldBackButtonBeMappedToEscape() {
 		session.writeCodePoint(ctrlDown, codePoint);
 	}
 
-    // Kirim kombinasi ke session
-    //session.writeCodePoint(finalCtrl, codePoint);
-
-    // RESET status setelah ditekan (Perilaku standar Termux)
-    /*if (isCtrlActive || isAltActive) {
-        isCtrlActive = false;
-        isAltActive = false;
-        
-        // Update UI tombol agar tidak berwarna biru lagi
-        extraKeysView.reload(currentExtraKeysInfo, 0); 
-    }*/
+ 
 	   
 	   
 	   // SETIAP KALI MENGETIK:
