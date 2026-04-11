@@ -52,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
  private boolean keyboardVisible = false; // tambahkan ini
 private boolean isCtrlActive = false;
 private boolean isAltActive = false;
+private int lastSelectedEnvironmentIndex = 0;
 private ExtraKeysView extraKeysView;
  private ExtraKeysInfo currentExtraKeysInfo; // Tambahkan ini
     private TerminalView terminalView;
@@ -76,7 +77,7 @@ public void onServiceConnected(ComponentName name, IBinder service) {
 		
     } else {
         // Jika benar-benar kosong (baru pertama buka), baru buat baru
-        terminalSession = createNewSession(); 
+        terminalSession = DevuanSession(); 
         mTerminalService.registerSession(terminalSession);
     }
     
@@ -140,9 +141,58 @@ private TerminalSession createNewSession() {
         callback   
     );
 }
+
+private TerminalSession DevuanSession() {
+    String prefix = getFilesDir().getAbsolutePath();
+    String shellPath = prefix + "/bin/bash";
+    
+    return new TerminalSession(
+         "/system/bin/sh",   // command
+        prefix,               // args
+         new String[0],               // env
+         new String[0],               // cwd
+        callback   
+    );
+}
+
+
+private void switchSession(TerminalSession session) {
+    if (session == null) return;
+    
+    this.terminalSession = session;
+    
+    // PENTING: Update callback agar session lama lapor ke activity yang sekarang
+    terminalSession.updateCallback(this.callback); 
+    
+    // Pasang ke view
+    terminalView.attachSession(terminalSession);
+    
+    
+}
+
+
+private void handleSessionExit(TerminalSession session) {
+    if (mTerminalService != null) {
+        // 1. Hapus session dari List di Service
+        mTerminalService.removeSession(session);
+        
+        // 2. Cek apakah masih ada session lain yang tersisa
+        if (mTerminalService.mTerminalSessions.isEmpty()) {
+            // Jika benar-benar kosong, baru tutup aplikasi
+            stopService(new Intent(this, TerminalService.class));
+            finish();
+        } else {
+            // Jika masih ada session lain (misal Devuan masih ada)
+            // Pindahkan tampilan secara otomatis ke session yang tersisa
+            TerminalSession nextSession = mTerminalService.getLastSession();
+            switchSession(nextSession);
+            Toast.makeText(this, "Session ditutup. Berpindah ke session aktif lainnya.", Toast.LENGTH_SHORT).show();
+        }
+    }
+}
 	
 	private void showRadioDialog() {
-  String[] options = {"Option 1", "Option 2", "Option 3"};
+  String[] options = {"Devuan", "Android"};
 final int[] selectedIndex = {0};
 
 // 🔥 Custom adapter untuk radio text
@@ -174,12 +224,69 @@ title.setPadding(40, 40, 40, 20);
 
 AlertDialog dialog = new AlertDialog.Builder(this)
         .setCustomTitle(title) // 🔥 pakai custom title
-        .setSingleChoiceItems(adapter, selectedIndex[0], (d, which) -> {
-            selectedIndex[0] = which;
+		.setSingleChoiceItems(adapter, lastSelectedEnvironmentIndex, (d, which) -> {
+            // 3. Update variabel class setiap kali user klik (sebelum tekan OK)
+            lastSelectedEnvironmentIndex = which;
         })
         .setPositiveButton("OK", (d, which) -> {
-            String selected = options[selectedIndex[0]];
-            Toast.makeText(this, "Dipilih: " + selected, Toast.LENGTH_SHORT).show();
+			int index = lastSelectedEnvironmentIndex; 
+            String modeName = (index == 0) ? "Devuan" : "Android";
+            
+            TerminalSession targetSession = null;
+            if (mTerminalService.mTerminalSessions.size() > index) {
+                targetSession = mTerminalService.mTerminalSessions.get(index);
+            }
+
+            if (targetSession == null) {
+                if (index == 0) {
+                    targetSession = DevuanSession();
+                } else {
+                    targetSession = createNewSession();
+                }
+                mTerminalService.registerSession(targetSession);
+                Toast.makeText(this, "🆕 Membuat Session " + modeName, Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "🔄 Switch ke " + modeName, Toast.LENGTH_SHORT).show();
+            }
+
+            switchSession(targetSession);
+			/*int index = selectedIndex[0]; // 0 untuk Devuan, 1 untuk Android
+    String modeName = (index == 0) ? "Devuan" : "Android";
+    TerminalSession targetSession = null;
+
+    // 🔍 1. CEK: Apakah di list Service sudah ada session pada posisi index tersebut
+    if (mTerminalService.mTerminalSessions.size() > index) {
+        targetSession = mTerminalService.mTerminalSessions.get(index);
+    }
+
+    // 🛠️ 2. LOGIKA: Buat Baru vs Switch
+    if (targetSession == null) {
+        // --- PROSES CREATE ---
+        if (index == 0) {
+            targetSession = DevuanSession();
+        } else {
+            targetSession = createNewSession();
+        }
+        mTerminalService.registerSession(targetSession);
+        
+        // Tampilkan Toast saat membuat session pertama kali
+        Toast.makeText(this, "🆕 Membuat Session " + modeName, Toast.LENGTH_SHORT).show();
+    } else {
+        // --- PROSES SWITCH ---
+        // Tampilkan Toast saat berpindah ke session yang sudah ada di memori
+        Toast.makeText(this, "🔄 Switch ke " + modeName, Toast.LENGTH_SHORT).show();
+    }
+
+    // 📺 3. EKSEKUSI
+    switchSession(targetSession);
+    
+			
+			*/
+			
+			
+			
+            //String selected = options[selectedIndex[0]];
+            //Toast.makeText(this, "Dipilih: " + selected, Toast.LENGTH_SHORT).show();
         })
         .setNegativeButton("Cancel", null)
         .create();
@@ -466,8 +573,9 @@ public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
         // Jika session sudah tidak jalan (tampil pesan Process completed)
         if (session != null && !session.isRunning()) {
             // Skenario A: Finish activity jika session selesai
-			stopService(new Intent(MainActivity.this, TerminalService.class));
-            finish(); 
+			//stopService(new Intent(MainActivity.this, TerminalService.class));
+            //finish(); 
+			handleSessionExit(session);
             // Skenario B: Atau jika mau restart session, panggil method restart kamu di sini
             return true;
         }
