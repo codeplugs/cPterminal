@@ -70,6 +70,10 @@ public void onServiceConnected(ComponentName name, IBinder service) {
     if (existingSession != null) {
         // Jika sudah ada session di background, pakai yang itu
         terminalSession = existingSession;
+		terminalSession.updateCallback(callback); 
+        terminalSession.forceResetState();
+		
+		
     } else {
         // Jika benar-benar kosong (baru pertama buka), baru buat baru
         terminalSession = createNewSession(); 
@@ -247,10 +251,7 @@ dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
             case "DOWN": currentSession.write("\u001b[B"); break;
             case "RIGHT": currentSession.write("\u001b[C"); break;
             case "LEFT": currentSession.write("\u001b[D"); break;
-            // KODE KRUSIAL UNTUK BACKSPACE
-            case "BACKSPACE": 
-           currentSession.write("\u007f"); 
-            break;
+           
 			default:
             if (key.length() == 1) {
                 // Jika tombol 'C' di Extra Keys diklik saat tombol CTRL software aktif
@@ -314,7 +315,7 @@ terminalView.setFocusable(true);
     "  {key: 'TAB', display: 'TAB'}, " +
     "  'UP'" +
     "]," +
-    "['LEFT', 'DOWN', 'RIGHT', 'BACKSPACE']" +
+    "['LEFT', 'DOWN', 'RIGHT']" +
     "]";
 	
 	
@@ -554,7 +555,7 @@ public void onColorsChanged(TerminalSession session) {
     public void onBell(TerminalSession session) {}
 };
 
-        // Path shell
+     /*   // Path shell
         String prefix = getFilesDir().getAbsolutePath();
         String shellPath = prefix + "/bin/bash";
 
@@ -570,7 +571,7 @@ TerminalSession session = new TerminalSession(
 
 
         // Buat TerminalSession
-        /*terminalSession = new TerminalSession(shellPath, prefix, new String[0], new String[0],
+        terminalSession = new TerminalSession(shellPath, prefix, new String[0], new String[0],
                 new TerminalSession.SessionChangedCallback() {
                     @Override public void onTextChanged(TerminalSession changedSession) {}
                     @Override public void onTitleChanged(TerminalSession changedSession) {}

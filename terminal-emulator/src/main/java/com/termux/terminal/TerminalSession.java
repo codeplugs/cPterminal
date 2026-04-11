@@ -87,7 +87,7 @@ public final class TerminalSession extends TerminalOutput {
     private final byte[] mUtf8InputBuffer = new byte[5];
 
     /** Callback which gets notified when a session finishes or changes title. */
-    final SessionChangedCallback mChangeCallback;
+    protected SessionChangedCallback mChangeCallback;
 
     /** The pid of the shell process. 0 if not started and -1 if finished running. */
     int mShellPid;
@@ -267,7 +267,59 @@ public final class TerminalSession extends TerminalOutput {
         }
         write(mUtf8InputBuffer, 0, bufferPosition);
     }
+	
+	
+	
+	/*public void resetEmulatorState(int cols, int rows) {
+    if (mEmulator != null) {
+        // 1. Sinkronisasi ukuran pty agar Linux tahu ukuran layar baru
+        JNI.setPtyWindowSize(mTerminalFileDescriptor, rows, cols);
+        // 2. Paksa emulator hitung ulang baris dan kolom
+        mEmulator.resize(cols, rows);
+        // 3. Kirim sinyal refresh ke UI
+        notifyScreenUpdate();
+    }
+}*/
+	
+	public void updateCallback(SessionChangedCallback callback) {
+    this.mChangeCallback = callback;
+	
+}
 
+	public void resetEmulatorHard() {
+    if (mEmulator != null) {
+        // 1. Reset state internal emulator (membersihkan buffer layar & mode input)
+        mEmulator.reset(); 
+        
+        // 2. Clear ByteQueue (Antrean data) secara total
+        while (mTerminalToProcessIOQueue.read(mUtf8InputBuffer, false) > 0);
+        while (mProcessToTerminalIOQueue.read(new byte[4096], false) > 0);
+
+        // 3. Beri tahu view untuk gambar ulang
+        notifyScreenUpdate();
+    }
+}
+	
+	
+	
+	
+	
+/**
+     * Membersihkan antrean input/output untuk mencegah karakter sampah 
+     * menyebabkan error atau 'auto-enter' saat session di-attach ulang.
+     */
+  public void forceResetState() {
+        try {
+            // Baca semua data yang tersisa di antrean sampai habis (false = non-blocking)
+            while (mTerminalToProcessIOQueue.read(mUtf8InputBuffer, false) > 0) {
+                // Kosongkan saja
+            }
+            Log.d("TerminalSession", "Queue cleared");
+        } catch (Exception e) {
+            Log.e("TerminalSession", "Error clearing queue", e);
+        }
+    }
+	
     public TerminalEmulator getEmulator() {
         return mEmulator;
     }
