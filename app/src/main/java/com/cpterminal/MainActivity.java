@@ -66,19 +66,21 @@ public void onServiceConnected(ComponentName name, IBinder service) {
     mTerminalService = binder.getService();
     
     // 🔥 LOGIKA CEK SESSION:
-    TerminalSession existingSession = mTerminalService.getLastSession();
-    
+    //TerminalSession existingSession = mTerminalService.getLastSession();
+    TerminalSession existingSession = mTerminalService.getActiveSession();
     if (existingSession != null) {
         // Jika sudah ada session di background, pakai yang itu
         terminalSession = existingSession;
 		terminalSession.updateCallback(callback); 
         terminalSession.forceResetState();
-		
+		lastSelectedEnvironmentIndex = mTerminalService.getCurrentSessionIndex();
 		
     } else {
         // Jika benar-benar kosong (baru pertama buka), baru buat baru
         terminalSession = DevuanSession(); 
         mTerminalService.registerSession(terminalSession);
+		mTerminalService.setCurrentSessionIndex(0);
+        lastSelectedEnvironmentIndex = 0;
     }
     
     // Pasang ke view
@@ -163,7 +165,15 @@ private void switchSession(TerminalSession session) {
     
     // PENTING: Update callback agar session lama lapor ke activity yang sekarang
     terminalSession.updateCallback(this.callback); 
-    
+    // 🔥 SIMPAN INDEX KE SERVICE
+    if (mTerminalService != null) {
+        int index = mTerminalService.mTerminalSessions.indexOf(session);
+        if (index != -1) {
+            mTerminalService.setCurrentSessionIndex(index);
+            // Update juga variabel radio button agar tetap sinkron
+            lastSelectedEnvironmentIndex = index; 
+        }
+    }
     // Pasang ke view
     terminalView.attachSession(terminalSession);
     

@@ -26,6 +26,7 @@ public final class TerminalService extends Service {
 
     private static final String CHANNEL_ID = "cpterminal_notification_channel";
     private static final int NOTIFICATION_ID = 1337;
+	private int mCurrentSessionIndex = 0;
     private static final String ACTION_EXIT = "com.cpterminal.ACTION_EXIT";
 
     /** List penampung semua session aktif */
@@ -64,6 +65,25 @@ public final class TerminalService extends Service {
         updateNotification();
         return START_STICKY;
     }
+	
+	
+	
+	public void setCurrentSessionIndex(int index) {
+        this.mCurrentSessionIndex = index;
+    }
+
+    public int getCurrentSessionIndex() {
+        return mCurrentSessionIndex;
+    }
+    
+    // Update getLastSession agar lebih cerdas
+    public TerminalSession getActiveSession() {
+        if (mTerminalSessions.isEmpty()) return null;
+        // Jika index yang disimpan di luar jangkauan, reset ke 0
+        if (mCurrentSessionIndex >= mTerminalSessions.size()) mCurrentSessionIndex = 0;
+        return mTerminalSessions.get(mCurrentSessionIndex);
+    }
+	
 
     /**
      * Mendaftarkan session baru ke dalam service dan update notifikasi
