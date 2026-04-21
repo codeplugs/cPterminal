@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40FFFFFF"> <item android:id="@android:id/mask">
+        <color android:color="#FFFFFF" />
+    </item>
+    <item>
+        <selector>
+            <item android:state_activated="true">
+                <color android:color="#504CAF50" /> </item>
+            <item>
+                <color android:color="#3605B0" />
+            </item>
+        </selector>
+    </item>
+</ripple>

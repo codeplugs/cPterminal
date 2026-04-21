@@ -1,735 +1,195 @@
 package com.cpterminal;
 
-import android.app.Activity;
-import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
-import android.view.MotionEvent;
-import android.view.KeyEvent;
-import android.content.Context;
-import android.view.View;
-import android.view.inputmethod.InputMethodManager;
-import android.view.GestureDetector;
-import android.graphics.Rect;
-import android.view.ViewTreeObserver;
-import android.graphics.Color;
-import android.content.res.ColorStateList;
-import android.view.Menu;
-import android.view.MenuItem;
-import android.app.AlertDialog;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
-import android.widget.TextView;
-import android.widget.Toast;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.util.TypedValue;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.TextView;
 
+import androidx.appcompat.app.AppCompatActivity;
 
-
+import com.cpterminal.utils.InputState;
+import com.cpterminal.session.AlpineInstaller;
+import com.cpterminal.session.SessionController;
+import com.cpterminal.session.SessionFactory;
+import com.cpterminal.terminal.SessionCallbackImpl;
+import com.cpterminal.terminal.TerminalClientImpl;
+import com.cpterminal.ui.DialogHelper;
+import com.cpterminal.ui.ExtraKeysHandler;
+import com.cpterminal.ui.SessionListDialog;
 import com.termux.terminal.TerminalSession;
-import com.termux.terminal.TerminalEmulator;
 import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
-import com.termux.terminal.TerminalSession.SessionChangedCallback;
 
-import com.cpterminal.extrakeys.ExtraKeysView;
-import com.cpterminal.extrakeys.ExtraKeysInfo;
-import com.cpterminal.extrakeys.ExtraKeyButton;
-import com.cpterminal.extrakeys.ExtraKeysConstants;
-import com.google.android.material.button.MaterialButton;
+import java.io.File;
 
-
+/**
+ * Main activity — orchestrates UI, service binding and delegates logic to helpers.
+ */
 public class MainActivity extends AppCompatActivity {
- private boolean keyboardVisible = false; // tambahkan ini
-private boolean isCtrlActive = false;
-private boolean isAltActive = false;
-private int lastSelectedEnvironmentIndex = 0;
-private ExtraKeysView extraKeysView;
- private ExtraKeysInfo currentExtraKeysInfo; // Tambahkan ini
+
+    private static final float TERMINAL_TEXT_SP = 13;
+    private static final String FONT_PATH = "fonts/JetBrainsMono_Regular.ttf";
+
     private TerminalView terminalView;
-    private TerminalSession terminalSession;
-	private TerminalService mTerminalService;
-	private SessionChangedCallback callback;
-	private final ServiceConnection mServiceConnection = new ServiceConnection() {
-    @Override
-public void onServiceConnected(ComponentName name, IBinder service) {
-    TerminalService.TerminalServiceBinder binder = (TerminalService.TerminalServiceBinder) service;
-    mTerminalService = binder.getService();
-    
-    // 🔥 LOGIKA CEK SESSION:
-    //TerminalSession existingSession = mTerminalService.getLastSession();
-    TerminalSession existingSession = mTerminalService.getActiveSession();
-    if (existingSession != null) {
-        // Jika sudah ada session di background, pakai yang itu
-        terminalSession = existingSession;
-		terminalSession.updateCallback(callback); 
-        terminalSession.forceResetState();
-		lastSelectedEnvironmentIndex = mTerminalService.getCurrentSessionIndex();
-		
-    } else {
-        // Jika benar-benar kosong (baru pertama buka), baru buat baru
-        terminalSession = DevuanSession(); 
-        mTerminalService.registerSession(terminalSession);
-		mTerminalService.setCurrentSessionIndex(0);
-        lastSelectedEnvironmentIndex = 0;
-    }
-    
-    // Pasang ke view
-    terminalView.attachSession(terminalSession);
-}
+    private TextView sessionBadgeTxt;
+    private InputState inputState;
+    private ExtraKeysHandler extraKeysHandler;
+    private TerminalService terminalService;
+    private SessionController sessionController;
+    private DialogHelper dialogHelper;
 
-    @Override
-    public void onServiceDisconnected(ComponentName name) {
-        mTerminalService = null;
-    }
-};
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            terminalService = ((TerminalService.TerminalServiceBinder) service).getService();
+            sessionController = new SessionController(
+                    MainActivity.this, terminalService, terminalView,
+                    new SessionCallbackImpl(MainActivity.this, terminalView));
 
-@Override
-protected void onStop() {
-    super.onStop();
-    // Lepaskan koneksi service saat activity tidak terlihat
-    if (mTerminalService != null) {
-        unbindService(mServiceConnection);
-        mTerminalService = null;
-    }
-}
-
-
-@Override
-protected void onStart() {
-    super.onStart();
-    Intent intent = new Intent(this, TerminalService.class);
-    // Jalankan agar tetap hidup meski MainActivity hancur
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        startForegroundService(intent);
-    } else {
-        startService(intent);
-    }
-    // Bind untuk interaksi antar code
-    bindService(intent, mServiceConnection, Context.BIND_AUTO_CREATE);
-}
-	
-	@Override
-protected void onNewIntent(Intent intent) {
-    super.onNewIntent(intent);
-    setIntent(intent);
-    
-    // Saat notifikasi diklik dan app sudah terbuka, 
-    // pastikan kita tetap fokus ke terminal yang sama
-    if (terminalView != null && terminalSession != null) {
-        terminalView.attachSession(terminalSession);
-    }
-}
-	
-	// Buat helper method agar kode onCreate lebih bersih
-private TerminalSession createNewSession() {
-    String prefix = getFilesDir().getAbsolutePath();
-    String shellPath = prefix + "/bin/bash";
-    
-    return new TerminalSession(
-         "/system/bin/sh",   // command
-        prefix,               // args
-         new String[0],               // env
-         new String[0],               // cwd
-        callback   
-    );
-}
-
-private TerminalSession DevuanSession() {
-    String prefix = getFilesDir().getAbsolutePath();
-    String shellPath = prefix + "/bin/bash";
-    
-    return new TerminalSession(
-         "/system/bin/sh",   // command
-        prefix,               // args
-         new String[0],               // env
-         new String[0],               // cwd
-        callback   
-    );
-}
-
-
-private void switchSession(TerminalSession session) {
-    if (session == null) return;
-    
-    this.terminalSession = session;
-    
-    // PENTING: Update callback agar session lama lapor ke activity yang sekarang
-    terminalSession.updateCallback(this.callback); 
-    // 🔥 SIMPAN INDEX KE SERVICE
-    if (mTerminalService != null) {
-        int index = mTerminalService.mTerminalSessions.indexOf(session);
-        if (index != -1) {
-            mTerminalService.setCurrentSessionIndex(index);
-            // Update juga variabel radio button agar tetap sinkron
-            lastSelectedEnvironmentIndex = index; 
+            bootstrapSession();
         }
-    }
-    // Pasang ke view
-    terminalView.attachSession(terminalSession);
-    
-    
-}
 
-
-private void handleSessionExit(TerminalSession session) {
-    if (mTerminalService != null) {
-        // 1. Hapus session dari List di Service
-        mTerminalService.removeSession(session);
-        
-        // 2. Cek apakah masih ada session lain yang tersisa
-        if (mTerminalService.mTerminalSessions.isEmpty()) {
-            // Jika benar-benar kosong, baru tutup aplikasi
-            stopService(new Intent(this, TerminalService.class));
-            finish();
-        } else {
-            // Jika masih ada session lain (misal Devuan masih ada)
-            // Pindahkan tampilan secara otomatis ke session yang tersisa
-            TerminalSession nextSession = mTerminalService.getLastSession();
-            switchSession(nextSession);
-            Toast.makeText(this, "Session ditutup. Berpindah ke session aktif lainnya.", Toast.LENGTH_SHORT).show();
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            terminalService = null;
         }
-    }
-}
-	
-	private void showRadioDialog() {
-  String[] options = {"Devuan", "Android"};
-final int[] selectedIndex = {0};
+    };
 
-// 🔥 Custom adapter untuk radio text
-ArrayAdapter<String> adapter = new ArrayAdapter<String>(
-        this,
-        android.R.layout.simple_list_item_single_choice,
-        options
-) {
-    @Override
-    public View getView(int position, View convertView, ViewGroup parent) {
-        View view = super.getView(position, convertView, parent);
-
-        TextView text = view.findViewById(android.R.id.text1);
-        text.setTextColor(Color.WHITE); // 🔥 RADIO TEXT PUTIH
-        text.setTypeface(Typeface.MONOSPACE); // opsional biar terminal vibe
-
-        view.setBackgroundColor(Color.parseColor("#3605B0")); // background item
-
-        return view;
-    }
-};
-
-// 🔥 Custom TITLE
-TextView title = new TextView(this);
-title.setText("Pilih Mode");
-title.setTextColor(Color.WHITE); // 🔥 TITLE PUTIH
-title.setTextSize(20);
-title.setPadding(40, 40, 40, 20);
-
-AlertDialog dialog = new AlertDialog.Builder(this)
-        .setCustomTitle(title) // 🔥 pakai custom title
-		.setSingleChoiceItems(adapter, lastSelectedEnvironmentIndex, (d, which) -> {
-            // 3. Update variabel class setiap kali user klik (sebelum tekan OK)
-            lastSelectedEnvironmentIndex = which;
-        })
-        .setPositiveButton("OK", (d, which) -> {
-			int index = lastSelectedEnvironmentIndex; 
-            String modeName = (index == 0) ? "Devuan" : "Android";
-            
-            TerminalSession targetSession = null;
-            if (mTerminalService.mTerminalSessions.size() > index) {
-                targetSession = mTerminalService.mTerminalSessions.get(index);
-            }
-
-            if (targetSession == null) {
-                if (index == 0) {
-                    targetSession = DevuanSession();
-                } else {
-                    targetSession = createNewSession();
-                }
-                mTerminalService.registerSession(targetSession);
-                Toast.makeText(this, "🆕 Membuat Session " + modeName, Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "🔄 Switch ke " + modeName, Toast.LENGTH_SHORT).show();
-            }
-
-            switchSession(targetSession);
-			/*int index = selectedIndex[0]; // 0 untuk Devuan, 1 untuk Android
-    String modeName = (index == 0) ? "Devuan" : "Android";
-    TerminalSession targetSession = null;
-
-    // 🔍 1. CEK: Apakah di list Service sudah ada session pada posisi index tersebut
-    if (mTerminalService.mTerminalSessions.size() > index) {
-        targetSession = mTerminalService.mTerminalSessions.get(index);
-    }
-
-    // 🛠️ 2. LOGIKA: Buat Baru vs Switch
-    if (targetSession == null) {
-        // --- PROSES CREATE ---
-        if (index == 0) {
-            targetSession = DevuanSession();
-        } else {
-            targetSession = createNewSession();
-        }
-        mTerminalService.registerSession(targetSession);
-        
-        // Tampilkan Toast saat membuat session pertama kali
-        Toast.makeText(this, "🆕 Membuat Session " + modeName, Toast.LENGTH_SHORT).show();
-    } else {
-        // --- PROSES SWITCH ---
-        // Tampilkan Toast saat berpindah ke session yang sudah ada di memori
-        Toast.makeText(this, "🔄 Switch ke " + modeName, Toast.LENGTH_SHORT).show();
-    }
-
-    // 📺 3. EKSEKUSI
-    switchSession(targetSession);
-    
-			
-			*/
-			
-			
-			
-            //String selected = options[selectedIndex[0]];
-            //Toast.makeText(this, "Dipilih: " + selected, Toast.LENGTH_SHORT).show();
-        })
-        .setNegativeButton("Cancel", null)
-        .create();
-
-dialog.show();
-
-// 🔥 Background dialog
-if (dialog.getWindow() != null) {
-    dialog.getWindow().setBackgroundDrawable(
-        new ColorDrawable(Color.parseColor("#3605B0"))
-    );
-}
-
-// 🔥 Tombol jadi putih
-dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
-dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
-}
-	
-	private void sendControlKey(TerminalSession session, int codePoint) {
-    if (session == null) return;
-
-    int controlCode = -1;
-    
-    // Jika input adalah huruf a-z atau A-Z
-    if (codePoint >= 'a' && codePoint <= 'z') {
-        controlCode = codePoint - 'a' + 1;
-    } else if (codePoint >= 'A' && codePoint <= 'Z') {
-        controlCode = codePoint - 'A' + 1;
-    } 
-    // Handle karakter spesial tambahan seperti di kodemu
-    else if (codePoint == '@') {
-        session.write("\u0000");
-        return;
-    } else if (codePoint == '[') {
-        session.write("\u001b");
-        return;
-    } else if (codePoint == ' ') {
-        controlCode = 0; // Ctrl + Space
-    }
-
-    if (controlCode != -1) {
-        session.write(new String(new char[]{(char) controlCode}));
-    }
-
-    // Reset status CTRL setelah digunakan
-    isCtrlActive = false;
-    runOnUiThread(() -> extraKeysView.reload(currentExtraKeysInfo, 0));
-}
-	
-	
-	
-	
-	
-	// PERBAIKAN: Fungsi pengirim tombol
-    private void sendKeyToTerminal(String key) {
-        // Ambil session saat ini dari terminalView
-        TerminalSession currentSession = terminalView.getCurrentSession();
-        if (currentSession == null) return;
-
-        switch (key) {
-			
-            case "ESC": currentSession.write("\u001b"); break;
-			case "BKSP": // Tambahkan case ini jika library mengirimkan singkatan
-            currentSession.write("\u007f"); // Kode ASCII untuk menghapus
-            break;
-            case "TAB": currentSession.write("\t"); break;
-            case "ENTER": currentSession.write("\r"); break;
-            case "UP": currentSession.write("\u001b[A"); break;
-            case "DOWN": currentSession.write("\u001b[B"); break;
-            case "RIGHT": currentSession.write("\u001b[C"); break;
-            case "LEFT": currentSession.write("\u001b[D"); break;
-           
-			default:
-            if (key.length() == 1) {
-                // Jika tombol 'C' di Extra Keys diklik saat tombol CTRL software aktif
-                if (isCtrlActive) {
-                    char c = key.toUpperCase().charAt(0);
-                    currentSession.write(new String(new char[]{(char) (c - 64)}));
-                    isCtrlActive = false; // Reset
-                    extraKeysView.reload(currentExtraKeysInfo, 0);
-                } else {
-                    currentSession.write(key);
-                }
-            }
-            break;
-        }
-		 terminalView.updateSize();
-        terminalView.scrollToBottom();
-    }
-	
-	
-	
-
-	
-	private void scrollToBottom() {
-    if (terminalView != null) {
-        terminalView.post(() -> {
-            // Memanggil method yang sudah kita buat public di TerminalView
-            terminalView.updateSize(); 
-            terminalView.setTopRow(0);
-            terminalView.onScreenUpdated();
-            terminalView.invalidate();
-        });
-    }
-}
-	
-
+    // ---------------- lifecycle ----------------
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        ensureFilesDir();
+		inputState = new InputState();   
+        setupTerminalView();
+        setupExtraKeys();
+        dialogHelper = new DialogHelper(this);
+    }
 
-     
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Intent intent = new Intent(this, TerminalService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+        else startService(intent);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+    }
 
-	   
-        // TerminalView
-        terminalView = findViewById(R.id.terminal_view);
-terminalView.setTextSize(30);
-terminalView.setFocusable(true);
-        terminalView.setFocusableInTouchMode(true);
-        terminalView.requestFocus();
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (terminalService != null) {
+            unbindService(serviceConnection);
+            terminalService = null;
+        }
+    }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        new Handler(Looper.getMainLooper()).postDelayed(this::updateSessionBadge, 200);
+    }
 
-   extraKeysView = findViewById(R.id.extra_keys);
-		
+    // ---------------- setup ----------------
+    private void ensureFilesDir() {
+        File dir = getFilesDir();
+        if (!dir.exists()) dir.mkdirs();
+    }
 
-		
-		String buttonsJson = "[" +
-    "[" +
-    "  'ESC', " +
-    "  {key: 'MY_CONTROL_KEY', display: 'CTRL'}, " + // Paksa sebagai objek
-    "  {key: 'MY_ALT_KEY', display: 'ALT'}, " +  // Paksa sebagai objek
-    "  {key: 'TAB', display: 'TAB'}, " +
-    "  'UP'" +
-    "]," +
-    "['LEFT', 'DOWN', 'RIGHT']" +
-    "]";
-	
-	
-try {
-    // 2. Gunakan 3 parameter sesuai constructor di file ExtraKeysInfo.java kamu:
-    // Parameter 1: String JSON
-    // Parameter 2: Nama style (misal "default")
-    // Parameter 3: Alias map (kita kirim default aliases dari Constants)
-    
-    currentExtraKeysInfo = new ExtraKeysInfo(
-        buttonsJson, 
-        "default", 
-        ExtraKeysConstants.CONTROL_CHARS_ALIASES
+    private void setupTerminalView() {
+    terminalView = findViewById(R.id.terminal_view);
+    float sizeInSp = TERMINAL_TEXT_SP;
+    float selectedSize = TypedValue.applyDimension(
+    TypedValue.COMPLEX_UNIT_SP, 
+    sizeInSp, 
+    getResources().getDisplayMetrics()
     );
-
-    extraKeysView.reload(currentExtraKeysInfo, 0);
-// PAKSA MUNCUL:
-//extraKeysView.setVisibility(View.VISIBLE);
-//extraKeysView.setAlpha(1.0f); // Pastikan tidak transparan
-//extraKeysView.bringToFront(); // Paksa ke lapisan paling atas
-extraKeysView.setBackgroundColor(android.graphics.Color.BLACK); // Beri wa
-
-
-} catch (org.json.JSONException e) {
-    e.printStackTrace();
+    terminalView.setTextSize((int) selectedSize);
+    terminalView.setTypeface(Typeface.createFromAsset(getAssets(), FONT_PATH));
+    terminalView.setFocusable(true);
+    terminalView.setFocusableInTouchMode(true);
+    terminalView.requestFocus();
+    terminalView.setOnKeyListener(
+            (TerminalViewClient) new TerminalClientImpl(this, terminalView, inputState));
 }
 
-        extraKeysView.setExtraKeysViewClient(new ExtraKeysView.IExtraKeysView() {
-            @Override
-            public void onExtraKeyButtonClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
-				String key = buttonInfo.getKey();
-  TerminalSession session = terminalView.getCurrentSession();
+  private void setupExtraKeys() {
+    extraKeysHandler = new ExtraKeysHandler(
+            this, terminalView, findViewById(R.id.extra_keys), inputState);
+    extraKeysHandler.init();
+}
 
-        if (session != null) {
-			
-    if ("MY_CONTROL_KEY".equals(key)) {
-        isCtrlActive = !isCtrlActive; // Toggle status
-		
-		if (isCtrlActive) {
-			
-                    //char c = key.toLowerCase().charAt(0);
-                   //session.write(new String(new char[]{3})); // CTRL + huruf
-			
-            // Warna saat aktif (misal: Biru)
-            button.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#2196F3")));
-            button.setTextColor(Color.BLUE);
-			//sendControlKey(session, key);
-			
+
+
+    private void bootstrapSession() {
+        TerminalSession existing = terminalService.getActiveSession();
+        File marker = new File(getFilesDir(), "AlpineInstalled");
+
+        if (existing != null) {
+            sessionController.attachExisting(existing);
+        } else if (marker.exists()) {
+            sessionController.startAlpine();
         } else {
-            // Warna saat mati (kembalikan ke transparan atau abu-abu)
-            button.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
-            button.setTextColor(Color.WHITE); // Atau warna defaultmu
-        }
-    } else if ("MY_ALT_KEY".equals(key)) {
-        //isAltActive = !isAltActive;
-        //button.setSelected(isAltActive);
-    } else {
-        sendKeyToTerminal(key);
-    }
-    }
-            }
-
-            @Override
-            public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
-                return true;
-            }
-        });
-
-
-
-
-
-terminalView.setOnTouchListener(new View.OnTouchListener() {
-    private GestureDetector gestureDetector = new GestureDetector(MainActivity.this,
-        new GestureDetector.SimpleOnGestureListener() {
-            @Override
-            public boolean onSingleTapUp(MotionEvent e) {
-                // Hanya saat tap (single tap), keyboard muncul
-                terminalView.requestFocus();
-                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                imm.showSoftInput(terminalView, InputMethodManager.SHOW_IMPLICIT);
-                return true;
-            }
-
-            @Override
-            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-                // Scroll jangan muncul keyboard
-                return false;
-            }
-        });
-
-    @Override
-    public boolean onTouch(View v, MotionEvent event) {
-        gestureDetector.onTouchEvent(event);
-        return false; // biar TerminalView tetap menangani touch
-    }
-});
-
-
-
- 
-	
-
-   
-
-TerminalViewClient client = new TerminalViewClient() {
-	
-
-
-    @Override
-    public void onSingleTapUp(MotionEvent e) {
-        terminalView.requestFocus();
-    }
-
-    @Override
-    public boolean onLongPress(MotionEvent e) {
-        return false;
-    }
-@Override
-public void copyModeChanged(boolean copyMode) {
-    // kosong juga gapapa
-}
-    @Override
-    public float onScale(float scale) {
-        return scale;
-    }
-
-  
-	
-	
-	@Override
-public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
-    // 1. Jalankan fungsi scroll otomatis agar saat menghapus pun layar tetap di bawah
-    terminalView.post(() -> {
-        terminalView.updateSize();
-        terminalView.scrollToBottom();
-    });
-
-    // 2. Kirim tombol khusus (seperti Backspace, Enter, Tab) ke session
-    // Method ini adalah cara standar Termux mengirim input hardware ke emulator
-    /*if (session != null && session.isRunning()) {
-        // Jika terminalView punya method handleKeyDown, panggil itu
-        // Jika tidak, biarkan sistem menangani lewat return false
-    }*/
-
-// 2. Logika khusus untuk tombol ENTER saat proses selesai
-    if (keyCode == KeyEvent.KEYCODE_ENTER) {
-        // Jika session sudah tidak jalan (tampil pesan Process completed)
-        if (session != null && !session.isRunning()) {
-            // Skenario A: Finish activity jika session selesai
-			//stopService(new Intent(MainActivity.this, TerminalService.class));
-            //finish(); 
-			handleSessionExit(session);
-            // Skenario B: Atau jika mau restart session, panggil method restart kamu di sini
-            return true;
+            sessionController.startAlpineSetup();
+            dialogHelper.showLoading("Setup Alpine Linux...\nPlease wait.");
+            new Handler(Looper.getMainLooper()).postDelayed(
+                    () -> new AlpineInstaller(this, sessionController).runSetup(marker),
+                    1000);
         }
     }
 
-
-    // 3. PENTING: Kembalikan 'false' agar TerminalView internal 
-    // tetap menerima event ini dan memproses Backspace/Enter secara normal.
-    return false; 
-}
-
+    // ---------------- menu ----------------
     @Override
-    public boolean onKeyUp(int keyCode, KeyEvent e) {
-        return false;
-    }
-
-    @Override
-    public boolean readControlKey() {
-        return false;
-    }
-
-    @Override
-    public boolean readAltKey() {
-        return false;
-    }
-@Override
-public boolean shouldBackButtonBeMappedToEscape() {
-    return false;
-}
-    // ❗ WAJIB ADA (error kamu minta ini)
-    @Override
-    public boolean onCodePoint(int codePoint, boolean ctrlDown, TerminalSession session) {
-       //session.writeCodePoint(ctrlDown, codePoint);
-	   if (session == null) return false;
-	   
-	  // Gabungkan CTRL hardware dan CTRL software kita
-    boolean finalCtrl = ctrlDown || isCtrlActive;
-    boolean finalAlt = isAltActive; // Jika terminal mendukung Alt software
-
-
-    if (isCtrlActive) {
-		//session.write(new String(new char[]{3}));
-        sendControlKey(session, codePoint); // Panggil fungsi master
-        //return true; 
-    }else{
-		session.writeCodePoint(ctrlDown, codePoint);
-	}
-
- 
-	   
-	   
-	   // SETIAP KALI MENGETIK:
-        // Gunakan post agar dijalankan setelah layouting selesai
-        terminalView.post(() -> {
-            terminalView.updateSize();    // Hitung ulang baris yang muat di atas keyboard
-            terminalView.scrollToBottom(); // Paksa scroll ke bawah (mTopRow = 0)
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        MenuItem item = menu.findItem(R.id.action_show_sessions);
+        View actionView = item.getActionView();
+        sessionBadgeTxt = actionView.findViewById(R.id.session_count_txt);
+        actionView.setOnClickListener(v -> {
+            new SessionListDialog(this, terminalService, sessionController).show();
+            updateSessionBadge();
         });
         return true;
     }
-};
 
-terminalView.setOnKeyListener(client);
-
-   callback =
-        new TerminalSession.SessionChangedCallback() {
-@Override
-public void onColorsChanged(TerminalSession session) {
-    // kosong juga gapapa
-}
     @Override
-    public void onTextChanged(TerminalSession session) {
-        runOnUiThread(() -> terminalView.invalidate());
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_switch) { dialogHelper.showRadioDialog(); return true; }
+        if (id == R.id.action_info)   { dialogHelper.showAbout();       return true; }
+        if (id == R.id.action_add)    {  
+		new Handler(Looper.getMainLooper()).postDelayed(() -> {
+        sessionController.addNewSession();
+        updateSessionBadge(); // Masukkan ke dalam sini sekalian agar update setelah session baru muncul
+    }, 200);
+    return true; }
+        return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void onTitleChanged(TerminalSession session) {}
-
-    @Override
-    public void onSessionFinished(TerminalSession session) {}
-
-    @Override
-    public void onClipboardText(TerminalSession session, String text) {}
-
-    @Override
-    public void onBell(TerminalSession session) {}
-};
-
-     /*   // Path shell
-        String prefix = getFilesDir().getAbsolutePath();
-        String shellPath = prefix + "/bin/bash";
-
-
-TerminalSession session = new TerminalSession(
-        "/system/bin/sh",   // command
-        prefix,               // args
-         new String[0],               // env
-         new String[0],               // cwd
-        callback            // callback
-);
-
-
-
-        // Buat TerminalSession
-        terminalSession = new TerminalSession(shellPath, prefix, new String[0], new String[0],
-                new TerminalSession.SessionChangedCallback() {
-                    @Override public void onTextChanged(TerminalSession changedSession) {}
-                    @Override public void onTitleChanged(TerminalSession changedSession) {}
-                    @Override public void onSessionFinished(TerminalSession finishedSession) {}
-                    @Override public void onClipboardText(TerminalSession session, String text) {}
-                    @Override public void onBell(TerminalSession session) {}
-                    @Override public void onColorsChanged(TerminalSession session) {}
-                });*/
-
-        // ✅ Attach session setelah view siap
-        //terminalView.post(() -> terminalView.attachSession(session));
-		
-		 
+    // ---------------- helpers ----------------
+    public void updateSessionBadge() {
+        if (sessionBadgeTxt == null || terminalService == null) return;
+        runOnUiThread(() -> sessionBadgeTxt.setText(
+                String.valueOf(terminalService.mTerminalSessions.size())));
     }
-@Override
-public boolean onCreateOptionsMenu(Menu menu) {
-    getMenuInflater().inflate(R.menu.main_menu, menu);
-    return true;
-}
-		@Override
-public boolean onOptionsItemSelected(MenuItem item) {
-    if (item.getItemId() == R.id.action_switch) {
 
-       showRadioDialog();
-       
-
-        return true;
-    }
-    return super.onOptionsItemSelected(item);
-}
-
-  @Override
-protected void onDestroy() {
-    super.onDestroy();
-    // 🔥 PERBAIKAN: Jangan panggil terminalSession.finishIfRunning() di sini!
-    // Jika dipanggil di sini, setiap kali kamu keluar app, terminal MATI.
-    
-    if (mTerminalService != null) {
-        unbindService(mServiceConnection);
-        mTerminalService = null;
-    }
-}
+    public InputState        getInputState()        { return inputState; }
+    public ExtraKeysHandler  getExtraKeysHandler()  { return extraKeysHandler; }
+    public DialogHelper      getDialogHelper()      { return dialogHelper; }
+    public SessionController getController()        { return sessionController; }
+    public TerminalView      getTerminalView()      { return terminalView; }
+	
+	
 }

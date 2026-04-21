@@ -29,6 +29,19 @@ android:exported="true">
 		
 		
 		
+<provider
+    android:name=".MyDocumentsProvider"
+    android:authorities="com.cpterminal.documents"
+    android:enabled="true"
+    android:exported="true"
+    android:grantUriPermissions="true"
+    android:permission="android.permission.MANAGE_DOCUMENTS"
+    android:readPermission="android.permission.MANAGE_DOCUMENTS"
+    android:writePermission="android.permission.MANAGE_DOCUMENTS">
+    <intent-filter>
+        <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+    </intent-filter>
+</provider>
 
 		
 		
