@@ -88,7 +88,7 @@ public class DialogHelper {
 
     // -- Radio mode picker --
     public void showRadioDialog() {
-        final String[] options = {"Alpine", "Android"};
+        final String[] options = {"Alpine","Android", "Devuan"};
 
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(
                 activity, android.R.layout.simple_list_item_single_choice, options) {
@@ -107,13 +107,14 @@ public class DialogHelper {
         title.setTextColor(Color.WHITE);
         title.setTextSize(20);
         title.setPadding(40, 40, 40, 20);
-
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+ AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setCustomTitle(title)
                 .setSingleChoiceItems(adapter,
                         activity.getController().getLastEnvIndex(),
                         (d, which) -> activity.getController().setLastEnvIndex(which))
                 .create();
+
+        dialog.show();
 
         dialog.show();
         if (dialog.getWindow() != null)

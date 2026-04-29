@@ -15,6 +15,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
+import android.content.SharedPreferences;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -48,6 +49,10 @@ public class MainActivity extends AppCompatActivity {
     private TerminalService terminalService;
     private SessionController sessionController;
     private DialogHelper dialogHelper;
+    public SharedPreferences prefs; // Deklarasi saja
+    public int currentStage;
+    
+
 
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -57,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
                     MainActivity.this, terminalService, terminalView,
                     new SessionCallbackImpl(MainActivity.this, terminalView));
 
-            bootstrapSession();
+           bootstrapSession();
         }
 
         @Override
@@ -70,6 +75,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+		prefs = getSharedPreferences("INSTALL_REFS", Context.MODE_PRIVATE);
+        currentStage = prefs.getInt("INSTALL_STAGE", 0);
         setContentView(R.layout.activity_main);
         ensureFilesDir();
 		inputState = new InputState();   
@@ -100,6 +107,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         new Handler(Looper.getMainLooper()).postDelayed(this::updateSessionBadge, 200);
+		
+		if (currentStage == 1) {
+        getDialogHelper().showLoading("Setup Alpine...");
+    } else if (currentStage == 2) {
+        getDialogHelper().showLoading("Setup Devuan...");
+    }
+		
+		
     }
 
     // ---------------- setup ----------------
@@ -133,8 +148,8 @@ public class MainActivity extends AppCompatActivity {
 
 
 
-    private void bootstrapSession() {
-        TerminalSession existing = terminalService.getActiveSession();
+   private void bootstrapSession() {
+       TerminalSession existing = terminalService.getActiveSession();
         File marker = new File(getFilesDir(), "AlpineInstalled");
 
         if (existing != null) {
@@ -142,6 +157,7 @@ public class MainActivity extends AppCompatActivity {
         } else if (marker.exists()) {
             sessionController.startAlpine();
         } else {
+			prefs.edit().putInt("INSTALL_STAGE", 1).apply();
             sessionController.startAlpineSetup();
             dialogHelper.showLoading("Setup Alpine Linux...\nPlease wait.");
             new Handler(Looper.getMainLooper()).postDelayed(

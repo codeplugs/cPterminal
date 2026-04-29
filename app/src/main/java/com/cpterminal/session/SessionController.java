@@ -2,16 +2,17 @@ package com.cpterminal.session;
 
 import android.content.Intent;
 import android.widget.Toast;
+import android.os.Looper;
+import android.os.Handler;
 
 import com.cpterminal.MainActivity;
 import com.cpterminal.TerminalService;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSession.SessionChangedCallback;
 import com.termux.view.TerminalView;
+import com.cpterminal.session.DevuanInstaller; // Pastikan import ini benar
+import java.io.File;
 
-/**
- * Handles creating, switching and removing terminal sessions.
- */
 public class SessionController {
 
     private final MainActivity activity;
@@ -21,7 +22,7 @@ public class SessionController {
     private final SessionChangedCallback callback;
 
     private int sessionCounter = 0;
-    private int lastEnvIndex   = 0;
+    private int lastEnvIndex   = 0; // 0=Alpine, 1=Android, 2=Devuan
     private String selectedTitle = "Alpine";
     private TerminalSession current;
 
@@ -34,7 +35,6 @@ public class SessionController {
         this.factory = new SessionFactory(activity, callback);
     }
 
-    // -- Initial boot --
     public void attachExisting(TerminalSession existing) {
         switchSession(existing);
     }
@@ -42,32 +42,79 @@ public class SessionController {
     public void startAlpine() {
         current = factory.createInstalledAlpineSession();
         selectedTitle = "Alpine";
+        lastEnvIndex = 0;
         register(current);
     }
 
     public void startAlpineSetup() {
         current = factory.createAlpineSetupSession();
         selectedTitle = "Setup Alpine";
+        lastEnvIndex = 0;
         register(current);
     }
 
-    // -- Session operations --
+    public void startDevuan() {
+        current = factory.createInstalledDevuanSession();
+        selectedTitle = "Devuan";
+        lastEnvIndex = 2;
+        register(current);
+    }
+
+    public void startDevuanSetup() {
+        current = factory.createDevuanSetupSession();
+        selectedTitle = "Setup Devuan";
+        lastEnvIndex = 2;
+        register(current);
+    }
+
     public void switchSession(TerminalSession session) {
         if (session == null) return;
-        selectedTitle = "Alpine".equals(session.mSessionName) ? "Alpine" : "Android";
-        lastEnvIndex  = "Alpine".equals(session.mSessionName) ? 0 : 1;
+        selectedTitle = session.mSessionName;
+
+        if (session.mSessionName.contains("Alpine")) {
+            lastEnvIndex = 0;
+        } else if (session.mSessionName.contains("Devuan")) {
+            lastEnvIndex = 2;
+        } else if (session.mSessionName.contains("Android")) {
+            lastEnvIndex = 1;
+        }
+        
         current = session;
         session.updateCallback(callback);
-        int idx = service.mTerminalSessions.indexOf(session);
-        if (idx != -1) service.setCurrentSessionIndex(idx);
+        
+        if (service != null) {
+            int idx = service.mTerminalSessions.indexOf(session);
+            if (idx != -1) service.setCurrentSessionIndex(idx);
+        }
+        
         terminalView.attachSession(session);
     }
 
     public void addNewSession() {
         sessionCounter = getMaxSessionId() + 1;
-        TerminalSession s = (lastEnvIndex == 0)
-                ? factory.createInstalledAlpineSession()
-                : factory.createAndroidSession();
+        TerminalSession s;
+        
+        if (lastEnvIndex == 0) {
+            s = factory.createInstalledAlpineSession();
+        } else if (lastEnvIndex == 2) { 
+            File devMarker = new File(activity.getFilesDir(), "DevuanInstalled");
+            if (!devMarker.exists()) {
+				activity.prefs.edit().putInt("INSTALL_STAGE", 2).apply();
+                startDevuanSetup();
+                activity.getDialogHelper().showLoading("Setup Devuan...");
+                
+                // --- PERBAIKAN DI SINI ---
+                // Sebelumnya kamu panggil AlpineInstaller, harusnya DevuanInstaller
+                new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> new DevuanInstaller(activity, this).runSetup(devMarker),
+                        1000);
+                return;
+            }
+            s = factory.createInstalledDevuanSession();
+        } else {
+            s = factory.createAndroidSession();
+        }
+        
         s.mSessionId = sessionCounter;
         service.registerSession(s);
         switchSession(s);
@@ -84,12 +131,30 @@ public class SessionController {
         if (session == current) switchSession(service.getLastSession());
     }
 
-    // -- Helpers --
     public void sendToAlpine(String command) {
         if (service == null || service.mTerminalSessions.isEmpty()) return;
-        if (!selectedTitle.startsWith("Alpine") && !selectedTitle.equals("Setup Alpine")) return;
-        TerminalSession s = service.mTerminalSessions.get(0);
+        if (!selectedTitle.contains("Alpine")) return;
+        
+        TerminalSession s = findFirstSessionByName("Setup Alpine");
+        if (s == null) s = findFirstSessionByName("Alpine");
+        
         if (s != null && s.isRunning()) s.write(command + "\r");
+    }
+
+    public void sendToDevuan(String command) {
+        if (service == null || service.mTerminalSessions.isEmpty()) return;
+        
+        // Pengecekan Title yang lebih luwes
+        if (!selectedTitle.contains("Devuan")) return;
+        
+        // Cari session yang relevan
+        TerminalSession s = findFirstSessionByName("Setup Devuan");
+        if (s == null) s = findFirstSessionByName("Devuan");
+        
+        if (s != null && s.isRunning()) {
+            // Hapus 'fffffff' karena itu bikin command Linux error/bengong
+            s.write(command + "\r");
+        }
     }
 
     public void switchToAlpineProper() {
@@ -97,14 +162,18 @@ public class SessionController {
         if (current != null) current.finishIfRunning();
         service.mTerminalSessions.clear();
         startAlpine();
-        terminalView.attachSession(current);
-        Toast.makeText(activity, "Alpine Linux Ready!", Toast.LENGTH_SHORT).show();
     }
 
-    // -- Private --
+    public void switchToDevuanProper() {
+        activity.getDialogHelper().dismissLoading();
+        if (current != null) current.finishIfRunning();
+        //service.mTerminalSessions.clear();
+        startDevuan();
+    }
+
     private void register(TerminalSession s) {
         service.registerSession(s);
-        service.setCurrentSessionIndex(0);
+        service.setCurrentSessionIndex(service.mTerminalSessions.size() - 1);
         terminalView.attachSession(s);
     }
 
@@ -115,7 +184,13 @@ public class SessionController {
         return max;
     }
 
-    // -- Getters --
+    private TerminalSession findFirstSessionByName(String name) {
+        for (TerminalSession s : service.mTerminalSessions) {
+            if (s.mSessionName != null && s.mSessionName.equals(name)) return s;
+        }
+        return null;
+    }
+
     public TerminalSession getCurrent()   { return current; }
     public String getSelectedTitle()      { return selectedTitle; }
     public int getLastEnvIndex()          { return lastEnvIndex; }

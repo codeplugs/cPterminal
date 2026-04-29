@@ -20,16 +20,26 @@ public class SessionCallbackImpl implements SessionChangedCallback {
         this.terminalView = terminalView;
     }
 
-    @Override
+  @Override
     public void onTextChanged(TerminalSession session) {
         String text = session.getEmulator().getScreen().getTranscriptText();
-        if (text.contains(INSTALL_DONE_MARKER)
-                && "Setup Alpine".equals(activity.getController().getSelectedTitle())) {
-            activity.runOnUiThread(() -> activity.getController().switchToAlpineProper());
+        
+        // Cek apakah ada sinyal sukses dari script installer
+        if (text.contains(INSTALL_DONE_MARKER)) {
+            String title = activity.getController().getSelectedTitle();
+            
+            if ("Setup Alpine".equals(title)) {
+                activity.runOnUiThread(() -> activity.getController().switchToAlpineProper());
+            } 
+            // --- TAMBAHAN UNTUK DEVUAN ---
+            else if ("Setup Devuan".equals(title)) {
+                activity.runOnUiThread(() -> activity.getController().switchToDevuanProper());
+            }
         }
+        
         activity.runOnUiThread(terminalView::invalidate);
     }
-
+	
     @Override
     public void onSessionFinished(TerminalSession session) {
         activity.runOnUiThread(() -> {
