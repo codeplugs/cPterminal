@@ -87,37 +87,41 @@ public class DialogHelper {
     }
 
     // -- Radio mode picker --
-    public void showRadioDialog() {
-        final String[] options = {"Alpine","Android", "Devuan"};
+   public void showRadioDialog() {
+    final String[] options = {"Alpine","Android", "Devuan"};
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
-                activity, android.R.layout.simple_list_item_single_choice, options) {
-            @Override public View getView(int p, View c, ViewGroup g) {
-                View v = super.getView(p, c, g);
-                TextView t = v.findViewById(android.R.id.text1);
-                t.setTextColor(Color.WHITE);
-                t.setTypeface(Typeface.MONOSPACE);
-                v.setBackgroundColor(DIALOG_BG);
-                return v;
-            }
-        };
+    ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+            activity, android.R.layout.simple_list_item_single_choice, options) {
+        @Override public View getView(int p, View c, ViewGroup g) {
+            View v = super.getView(p, c, g);
+            TextView t = v.findViewById(android.R.id.text1);
+            t.setTextColor(Color.WHITE);
+            t.setTypeface(Typeface.MONOSPACE);
+            v.setBackgroundColor(DIALOG_BG);
+            return v;
+        }
+    };
 
-        TextView title = new TextView(activity);
-        title.setText("Pilih Mode");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(20);
-        title.setPadding(40, 40, 40, 20);
- AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setCustomTitle(title)
-                .setSingleChoiceItems(adapter,
-                        activity.getController().getLastEnvIndex(),
-                        (d, which) -> activity.getController().setLastEnvIndex(which))
-                .create();
+    TextView title = new TextView(activity);
+    title.setText("Pilih Mode");
+    title.setTextColor(Color.WHITE);
+    title.setTextSize(20);
+    title.setPadding(40, 40, 40, 20);
 
-        dialog.show();
+    AlertDialog dialog = new AlertDialog.Builder(activity)
+            .setCustomTitle(title)
+            .setSingleChoiceItems(adapter,
+                    activity.getController().getLastEnvIndex(),
+                    (d, which) -> {
+                        activity.getController().setLastEnvIndex(which);
+                        d.dismiss(); // tutup langsung
+                        activity.getController().addNewSession(); // <-- LANGSUNG BIKIN SESSION
+                    })
+            .create();
 
-        dialog.show();
-        if (dialog.getWindow() != null)
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(DIALOG_BG));
-    }
+    if (dialog.getWindow() != null)
+        dialog.getWindow().setBackgroundDrawable(new ColorDrawable(DIALOG_BG));
+    
+    dialog.show(); // <-- CUMA SEKALI
+}
 }

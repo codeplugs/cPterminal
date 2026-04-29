@@ -16,9 +16,13 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.cpterminal.session.DevuanInstaller;
 import com.cpterminal.utils.InputState;
 import com.cpterminal.session.AlpineInstaller;
 import com.cpterminal.session.SessionController;
@@ -103,19 +107,131 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        new Handler(Looper.getMainLooper()).postDelayed(this::updateSessionBadge, 200);
-		
-		if (currentStage == 1) {
-        getDialogHelper().showLoading("Setup Alpine...");
-    } else if (currentStage == 2) {
-        getDialogHelper().showLoading("Setup Devuan...");
+  protected void onResume() {
+    super.onResume();
+    new Handler(Looper.getMainLooper()).postDelayed(this::updateSessionBadge, 200);
+	
+	int stage = prefs.getInt("INSTALL_STAGE", 0);
+File devMarker = new File(getFilesDir(), "DevuanInstalled");
+File alpineMarker = new File(getFilesDir(), "AlpineInstalled");
+
+// cek internet sekali aja
+ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+boolean online = cm.getActiveNetworkInfo() != null && cm.getActiveNetworkInfo().isConnected();
+
+// kalo lagi setup Devuan dan belum selesai
+if (stage == 2 && !devMarker.exists()) {
+    if (!online) {
+        // wifi mati → jangan nyangkut, reset aja
+        prefs.edit().putInt("INSTALL_STAGE", 0).apply();
+        Toast.makeText(this, "Devuan belum kelar, nyalain wifi terus pilih Devuan lagi", Toast.LENGTH_LONG).show();
+        return;
     }
-		
-		
+    
+    // online → lanjutin tapi JANGAN pake loading dialog
+    // getDialogHelper().showLoading("Setup Devuan... (melanjutkan)"); // <-- HAPUS/COMMENT
+    
+    if (sessionController != null && (sessionController.getCurrent() == null || 
+        !sessionController.getSelectedTitle().contains("Setup"))) {
+        sessionController.startDevuanSetup();
+        new Thread(() -> new DevuanInstaller(this, sessionController).runSetup(devMarker)).start();
     }
+}
+// kalo lagi setup Alpine
+else if (stage == 1 && !alpineMarker.exists()) {
+    if (!online) {
+        prefs.edit().putInt("INSTALL_STAGE", 0).apply();
+        Toast.makeText(this, "Alpine belum kelar, nyalain wifi terus pilih Alpine lagi", Toast.LENGTH_LONG).show();
+        return;
+    }
+    
+    // getDialogHelper().showLoading("Setup Alpine... (melanjutkan)"); // <-- HAPUS JUGA
+    
+    if (sessionController != null && (sessionController.getCurrent() == null || 
+        !sessionController.getSelectedTitle().contains("Setup"))) {
+       sessionController.startAlpineSetup();
+       // start alpine installer thread lu disini
+    }
+}
+	 /*int stage = prefs.getInt("INSTALL_STAGE", 0);
+    File devMarker = new File(getFilesDir(), "DevuanInstalled");
+    File alpineMarker = new File(getFilesDir(), "AlpineInstalled"); // lu pasti punya ini
+    
+    // kalo lagi setup Devuan dan belum selesai
+    if (stage == 2 && !devMarker.exists()) {
+        getDialogHelper().showLoading("Setup Devuan... (melanjutkan)");
+        // pastikan session setup-nya ada lagi
+        if (sessionController != null && (sessionController.getCurrent() == null || 
+            !sessionController.getSelectedTitle().contains("Setup"))) {
+            sessionController.startDevuanSetup();
+        }
+    }
+    // kalo lagi setup Alpine
+    else if (stage == 1 && !alpineMarker.exists()) {
+        getDialogHelper().showLoading("Setup Alpine... (melanjutkan)");
+        if (sessionController != null && (sessionController.getCurrent() == null || 
+            !sessionController.getSelectedTitle().contains("Setup"))) {
+           sessionController.startAlpineSetup();
+        }
+    }*/
+	
+/*int stage = prefs.getInt("INSTALL_STAGE", 0);
+    int lastEnv = prefs.getInt("LAST_ENV_INDEX", 0);
+
+    // 2. Jika stage > 0 (artinya lagi install), kita sinkronkan dengan Service
+    if (stage > 0) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (isFinishing() || isDestroyed() || terminalService == null) return;
+
+            // Cek apakah di service memang ada sesi yang lagi jalan
+            if (!terminalService.mTerminalSessions.isEmpty()) {
+                String msg = (lastEnv == 2) ? "Setup Devuan" : "Setup Alpine";
+                
+                // Munculkan dialog hanya jika memang prosesnya masih layak ditunggu
+                if (dialogHelper != null) {
+                    dialogHelper.dismissLoading();
+                    dialogHelper.showLoading(msg);
+                }
+            } else {
+                // KASUS DARURAT: Prefs bilang install, tapi Service kosong (mungkin ke-kill sistem)
+                // Reset stage ke 0 supaya gak stuck di dialog hantu
+                prefs.edit().putInt("INSTALL_STAGE", 0).commit();
+                android.util.Log.e("CP_DEBUG", "Install macet: Service kosong, Stage di-reset.");
+            }
+        }, 500);
+    }*/
+
+    /*File alpineMarker = new File(getFilesDir(), "AlpineInstalled");
+    File devMarker = new File(getFilesDir(), "DevuanInstalled");
+    int stage = prefs.getInt("INSTALL_STAGE", 0);
+
+    // 1. Jika Alpine SUDAH ADA, tapi status masih Stage 1
+    if (alpineMarker.exists() && stage == 1) {
+        // Alpine sudah kelar, matikan stage 1. 
+        // Jangan set ke 2 dulu sebelum user bener-bener mulai install Devuan!
+        prefs.edit().putInt("INSTALL_STAGE", 0).apply();
+        stage = 0; 
+        dialogHelper.dismissLoading();
+    }
+
+    // 2. Jika Devuan SUDAH ADA
+    if (devMarker.exists()) {
+        prefs.edit().putInt("INSTALL_STAGE", 0).apply();
+        dialogHelper.dismissLoading();
+        return;
+    }
+
+    // 3. Logika Tampilan Dialog yang Ketat
+    if (stage == 1 && !alpineMarker.exists()) {
+        dialogHelper.showLoading("Setup Alpine...");
+    } else if (stage == 2 && !devMarker.exists()) {
+        // Ini hanya akan muncul jika kamu set stage = 2 SAAT klik "Add Session" (Devuan)
+        dialogHelper.showLoading("Setup Devuan...");
+    } else {
+        // Selain kondisi di atas, sembunyikan loading
+        dialogHelper.dismissLoading();
+    }*/
+}
 
     // ---------------- setup ----------------
     private void ensureFilesDir() {
@@ -155,6 +271,7 @@ public class MainActivity extends AppCompatActivity {
         if (existing != null) {
             sessionController.attachExisting(existing);
         } else if (marker.exists()) {
+			
             sessionController.startAlpine();
         } else {
 			prefs.edit().putInt("INSTALL_STAGE", 1).apply();

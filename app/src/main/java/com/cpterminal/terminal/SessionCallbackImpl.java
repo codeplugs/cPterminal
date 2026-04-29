@@ -20,7 +20,38 @@ public class SessionCallbackImpl implements SessionChangedCallback {
         this.terminalView = terminalView;
     }
 
-  @Override
+
+@Override
+public void onTextChanged(TerminalSession session) {
+    String text = session.getEmulator().getScreen().getTranscriptText();
+    
+    if (text.contains(INSTALL_DONE_MARKER)) {
+        // Ambil stage saat ini
+        int stage = activity.prefs.getInt("INSTALL_STAGE", 0);
+        
+        if (stage > 0) { // Hanya proses jika stage belum 0
+            android.util.Log.d("CP_DEBUG", "Marker detect! Current Stage: " + stage);
+            
+            // LANGSUNG SET STAGE KE 0 DI SINI (PENTING!)
+            // Agar pemanggilan onTextChanged berikutnya tidak masuk ke sini lagi
+            activity.prefs.edit().putInt("INSTALL_STAGE", 0).commit(); 
+
+            activity.runOnUiThread(() -> {
+                if (stage == 2) {
+                    android.util.Log.d("CP_DEBUG", "Switching Natural to Devuan");
+                    activity.getController().switchToDevuanProper();
+                } else if (stage == 1) {
+                    android.util.Log.d("CP_DEBUG", "Switching Natural to Alpine");
+                    activity.getController().switchToAlpineProper();
+                }
+            });
+        }
+    }
+    activity.runOnUiThread(terminalView::invalidate);
+}
+
+
+  /*@Override
     public void onTextChanged(TerminalSession session) {
         String text = session.getEmulator().getScreen().getTranscriptText();
         
@@ -38,7 +69,7 @@ public class SessionCallbackImpl implements SessionChangedCallback {
         }
         
         activity.runOnUiThread(terminalView::invalidate);
-    }
+    }*/
 	
     @Override
     public void onSessionFinished(TerminalSession session) {
